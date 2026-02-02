@@ -26,6 +26,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(response.status).json(data)
   } catch (error) {
     console.error('Google Geocode proxy error:', error)
-    res.status(500).json({ error: 'Failed to fetch from Google Geocoding API' })
+    res.status(500).json({
+      error: 'Failed to fetch from Google Geocoding API',
+      details: error instanceof Error ? error.message : String(error),
+      url: url.replace(apiKey, 'REDACTED')
+    })
   }
 }
