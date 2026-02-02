@@ -11,8 +11,6 @@ interface SettingsProps {
 
 export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsProps) {
   const [homeAddress, setHomeAddress] = useState(config.homeAddress)
-  const [wsdotApiKey, setWsdotApiKey] = useState(config.wsdotApiKey)
-  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(config.googleMapsApiKey)
   const [ferryBias, setFerryBias] = useState(config.ferryPreferenceBias)
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -20,8 +18,8 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
   const handleSave = async () => {
     setError(null)
 
-    if (!homeAddress || !wsdotApiKey || !googleMapsApiKey) {
-      setError('All fields are required')
+    if (!homeAddress) {
+      setError('Home address is required')
       return
     }
 
@@ -32,14 +30,12 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
       let homeLocation: Location | null = config.homeLocation
 
       if (homeAddress !== config.homeAddress || !homeLocation) {
-        homeLocation = await geocodeAddress(googleMapsApiKey, homeAddress)
+        homeLocation = await geocodeAddress(homeAddress)
       }
 
       onSave({
         homeAddress,
         homeLocation,
-        wsdotApiKey,
-        googleMapsApiKey,
         ferryPreferenceBias: ferryBias,
       })
 
@@ -53,7 +49,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
     }
   }
 
-  const canSave = homeAddress && wsdotApiKey && googleMapsApiKey && !isGeocoding
+  const canSave = homeAddress && !isGeocoding
 
   return (
     <div className="settings">
@@ -79,49 +75,6 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
             placeholder="123 Main St, Poulsbo, WA"
           />
           <small>Your destination (usually home)</small>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="wsdotApiKey">WSDOT API Key</label>
-          <input
-            id="wsdotApiKey"
-            type="text"
-            value={wsdotApiKey}
-            onChange={(e) => setWsdotApiKey(e.target.value)}
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          />
-          <small>
-            Get a free key at{' '}
-            <a
-              href="https://wsdot.wa.gov/traffic/api/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              wsdot.wa.gov/traffic/api
-            </a>
-          </small>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="googleMapsApiKey">Google Maps API Key</label>
-          <input
-            id="googleMapsApiKey"
-            type="text"
-            value={googleMapsApiKey}
-            onChange={(e) => setGoogleMapsApiKey(e.target.value)}
-            placeholder="AIza..."
-          />
-          <small>
-            Get a key at{' '}
-            <a
-              href="https://console.cloud.google.com/apis/credentials"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Google Cloud Console
-            </a>
-            . Enable Routes API and Geocoding API.
-          </small>
         </div>
 
         <div className="form-group">

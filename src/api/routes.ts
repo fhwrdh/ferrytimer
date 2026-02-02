@@ -1,13 +1,8 @@
 import type { Location } from '../types'
 
-// Use proxy in development to avoid CORS issues
-const ROUTES_API_URL = import.meta.env.DEV
-  ? '/api/google/routes/directions/v2:computeRoutes'
-  : 'https://routes.googleapis.com/directions/v2:computeRoutes'
-
-const GEOCODE_API_URL = import.meta.env.DEV
-  ? '/api/google/geocode/json'
-  : 'https://maps.googleapis.com/maps/api/geocode/json'
+// Always use proxy - it handles CORS and API keys server-side
+const ROUTES_API_URL = '/api/google/routes/directions/v2:computeRoutes'
+const GEOCODE_API_URL = '/api/google/geocode/json'
 
 interface RouteResponse {
   routes: Array<{
@@ -20,7 +15,6 @@ interface RouteResponse {
 }
 
 export async function getDriveTime(
-  apiKey: string,
   origin: Location,
   destination: Location
 ): Promise<number> {
@@ -54,7 +48,6 @@ export async function getDriveTime(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
       'X-Goog-FieldMask': 'routes.duration',
     },
     body: JSON.stringify(body),
@@ -79,20 +72,16 @@ export async function getDriveTime(
 }
 
 export async function getDriveTimeMinutes(
-  apiKey: string,
   origin: Location,
   destination: Location
 ): Promise<number> {
-  const seconds = await getDriveTime(apiKey, origin, destination)
+  const seconds = await getDriveTime(origin, destination)
   return Math.ceil(seconds / 60)
 }
 
 // Get drive time from address string (uses geocoding)
-export async function geocodeAddress(
-  apiKey: string,
-  address: string
-): Promise<Location> {
-  const url = `${GEOCODE_API_URL}?address=${encodeURIComponent(address)}&key=${apiKey}`
+export async function geocodeAddress(address: string): Promise<Location> {
+  const url = `${GEOCODE_API_URL}?address=${encodeURIComponent(address)}`
 
   const response = await fetch(url)
   if (!response.ok) {
@@ -113,11 +102,8 @@ export async function geocodeAddress(
 }
 
 // Reverse geocode - turn coordinates into a friendly address
-export async function reverseGeocode(
-  apiKey: string,
-  location: Location
-): Promise<string> {
-  const url = `${GEOCODE_API_URL}?latlng=${location.lat},${location.lng}&key=${apiKey}`
+export async function reverseGeocode(location: Location): Promise<string> {
+  const url = `${GEOCODE_API_URL}?latlng=${location.lat},${location.lng}`
 
   const response = await fetch(url)
   if (!response.ok) {

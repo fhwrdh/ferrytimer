@@ -1,9 +1,7 @@
 import type { SailingSpace, VesselLocation } from '../types'
 
-// Use proxy in development to avoid CORS issues
-const BASE_URL = import.meta.env.DEV
-  ? '/api/wsdot'
-  : 'https://www.wsdot.wa.gov/ferries/api'
+// Always use proxy - it handles CORS and API keys server-side
+const BASE_URL = '/api/wsdot'
 
 // Terminal IDs for our routes
 export const TERMINALS = {
@@ -74,10 +72,9 @@ interface VesselLocationResponse {
 }
 
 export async function getTerminalSailingSpace(
-  apiKey: string,
   terminalId: number
 ): Promise<SailingSpace[]> {
-  const url = `${BASE_URL}/terminals/rest/terminalsailingspace/${terminalId}?apiaccesscode=${apiKey}`
+  const url = `${BASE_URL}/terminals/rest/terminalsailingspace/${terminalId}`
 
   const response = await fetch(url)
   if (!response.ok) {
@@ -105,10 +102,8 @@ export async function getTerminalSailingSpace(
     })
 }
 
-export async function getVesselLocations(
-  apiKey: string
-): Promise<VesselLocation[]> {
-  const url = `${BASE_URL}/vessels/rest/vessellocations?apiaccesscode=${apiKey}`
+export async function getVesselLocations(): Promise<VesselLocation[]> {
+  const url = `${BASE_URL}/vessels/rest/vessellocations`
 
   const response = await fetch(url)
   if (!response.ok) {
@@ -151,12 +146,11 @@ interface ScheduleTodayResponse {
 }
 
 export async function getScheduleToday(
-  apiKey: string,
   departingTerminalId: number,
   arrivingTerminalId: number,
   onlyRemaining: boolean = true
 ): Promise<Array<{ departureTime: Date; arrivalTime: Date; vesselName: string }>> {
-  const url = `${BASE_URL}/schedule/rest/scheduletoday/${departingTerminalId}/${arrivingTerminalId}/${onlyRemaining}?apiaccesscode=${apiKey}`
+  const url = `${BASE_URL}/schedule/rest/scheduletoday/${departingTerminalId}/${arrivingTerminalId}/${onlyRemaining}`
 
   const response = await fetch(url)
   if (!response.ok) {

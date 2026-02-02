@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Google Maps API key not configured' })
+  }
+
   const { path } = req.query
   const pathString = Array.isArray(path) ? path.join('/') : path || ''
 
@@ -12,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method: req.method,
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': req.headers['x-goog-api-key'] as string || '',
+        'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': req.headers['x-goog-fieldmask'] as string || '',
       },
       body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,

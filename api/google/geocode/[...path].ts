@@ -1,12 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Google Maps API key not configured' })
+  }
+
   const { path } = req.query
   const pathString = Array.isArray(path) ? path.join('/') : path || ''
 
-  // Build the Google Geocoding API URL
-  const queryString = req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''
-  const url = `https://maps.googleapis.com/maps/api/geocode/${pathString}${queryString}`
+  // Build the Google Geocoding API URL, injecting the API key
+  const originalQuery = req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''
+  const separator = originalQuery ? '&' : '?'
+  const url = `https://maps.googleapis.com/maps/api/geocode/${pathString}${originalQuery}${separator}key=${apiKey}`
 
   try {
     const response = await fetch(url, {

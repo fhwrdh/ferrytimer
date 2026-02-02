@@ -25,26 +25,20 @@ function App() {
   const [friendlyLocationName, setFriendlyLocationName] = useState<string | null>(null)
   const usingTestLocationRef = useRef<boolean>(false)
 
-  // Load config from localStorage, with env var fallbacks for development
+  // Load config from localStorage
   const [config, setConfig] = useState(() => {
     const saved = localStorage.getItem('ferrytimer-config')
     if (saved) {
       const parsed = JSON.parse(saved)
-      // Use env vars as fallbacks if localStorage values are empty
       return {
-        homeAddress: parsed.homeAddress || import.meta.env.VITE_HOME_ADDRESS || '',
+        homeAddress: parsed.homeAddress || '',
         homeLocation: parsed.homeLocation,
-        wsdotApiKey: parsed.wsdotApiKey || import.meta.env.VITE_WSDOT_API_KEY || '',
-        googleMapsApiKey: parsed.googleMapsApiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
         ferryPreferenceBias: parsed.ferryPreferenceBias ?? 0,
       }
     }
-    // No saved config - use env vars if available
     return {
-      homeAddress: import.meta.env.VITE_HOME_ADDRESS || '',
+      homeAddress: '',
       homeLocation: null,
-      wsdotApiKey: import.meta.env.VITE_WSDOT_API_KEY || '',
-      googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
       ferryPreferenceBias: 0,
     }
   })
@@ -90,20 +84,14 @@ function App() {
       return
     }
 
-    if (!config.googleMapsApiKey) {
-      return
-    }
-
-    reverseGeocode(config.googleMapsApiKey, currentLocation)
+    reverseGeocode(currentLocation)
       .then(name => setFriendlyLocationName(name))
       .catch(() => setFriendlyLocationName(null))
-  }, [currentLocation, usingTestLocation, config.googleMapsApiKey])
+  }, [currentLocation, usingTestLocation])
 
   const { routes, bestRoute, isLoading, error, refresh } = useRouteCalculation({
     currentLocation,
     homeLocation: config.homeLocation,
-    wsdotApiKey: config.wsdotApiKey,
-    googleMapsApiKey: config.googleMapsApiKey,
   })
 
   const saveConfig = (newConfig: typeof config) => {
@@ -147,7 +135,7 @@ function App() {
   }
 
   // Check if we need to show settings
-  const needsSetup = !config.homeLocation || !config.wsdotApiKey || !config.googleMapsApiKey
+  const needsSetup = !config.homeLocation
 
   if (showSettings || needsSetup) {
     return (

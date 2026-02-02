@@ -61,8 +61,6 @@ export interface RouteOption {
 export interface Config {
   homeAddress: string
   homeLocation: Location | null
-  wsdotApiKey: string
-  googleMapsApiKey: string
   ferryPreferenceBias: number // Minutes to add to drive-around (0 = neutral, 15 = prefer ferry)
 }
 

@@ -14,8 +14,6 @@ import { getDriveTimeMinutes } from '../api/routes'
 interface UseRouteCalculationProps {
   currentLocation: Location | null
   homeLocation: Location | null
-  wsdotApiKey: string
-  googleMapsApiKey: string
 }
 
 interface UseRouteCalculationResult {
@@ -40,8 +38,6 @@ function isNearby(loc1: Location, loc2: Location): boolean {
 export function useRouteCalculation({
   currentLocation,
   homeLocation,
-  wsdotApiKey,
-  googleMapsApiKey,
 }: UseRouteCalculationProps): UseRouteCalculationResult {
   const [routes, setRoutes] = useState<RouteOption[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -50,11 +46,6 @@ export function useRouteCalculation({
   const calculate = useCallback(async () => {
     if (!currentLocation || !homeLocation) {
       setRoutes([]) // Clear stale results when location is cleared
-      return
-    }
-
-    if (!wsdotApiKey || !googleMapsApiKey) {
-      setError('Missing API keys. Please configure in settings.')
       return
     }
 
@@ -91,17 +82,17 @@ export function useRouteCalculation({
         // Real-time vessel locations
         vesselLocations,
       ] = await Promise.all([
-        getDriveTimeMinutes(googleMapsApiKey, currentLocation, TERMINAL_LOCATIONS[TERMINALS.SEATTLE]),
-        getDriveTimeMinutes(googleMapsApiKey, currentLocation, TERMINAL_LOCATIONS[TERMINALS.EDMONDS]),
-        getDriveTimeMinutes(googleMapsApiKey, TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE], homeLocation),
-        getDriveTimeMinutes(googleMapsApiKey, TERMINAL_LOCATIONS[TERMINALS.KINGSTON], homeLocation),
-        getDriveTimeMinutes(googleMapsApiKey, currentLocation, TACOMA_NARROWS_WAYPOINT),
-        getDriveTimeMinutes(googleMapsApiKey, TACOMA_NARROWS_WAYPOINT, homeLocation),
-        getTerminalSailingSpace(wsdotApiKey, TERMINALS.SEATTLE),
-        getTerminalSailingSpace(wsdotApiKey, TERMINALS.EDMONDS),
-        getScheduleToday(wsdotApiKey, TERMINALS.SEATTLE, TERMINALS.BAINBRIDGE, true),
-        getScheduleToday(wsdotApiKey, TERMINALS.EDMONDS, TERMINALS.KINGSTON, true),
-        getVesselLocations(wsdotApiKey),
+        getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.SEATTLE]),
+        getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.EDMONDS]),
+        getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE], homeLocation),
+        getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.KINGSTON], homeLocation),
+        getDriveTimeMinutes(currentLocation, TACOMA_NARROWS_WAYPOINT),
+        getDriveTimeMinutes(TACOMA_NARROWS_WAYPOINT, homeLocation),
+        getTerminalSailingSpace(TERMINALS.SEATTLE),
+        getTerminalSailingSpace(TERMINALS.EDMONDS),
+        getScheduleToday(TERMINALS.SEATTLE, TERMINALS.BAINBRIDGE, true),
+        getScheduleToday(TERMINALS.EDMONDS, TERMINALS.KINGSTON, true),
+        getVesselLocations(),
       ])
 
       // Drive around option - always low risk (predictable, no waiting)
@@ -156,7 +147,7 @@ export function useRouteCalculation({
     } finally {
       setIsLoading(false)
     }
-  }, [currentLocation, homeLocation, wsdotApiKey, googleMapsApiKey])
+  }, [currentLocation, homeLocation])
 
   useEffect(() => {
     calculate()
