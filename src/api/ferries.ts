@@ -73,30 +73,38 @@ export async function getTerminalSailingSpace(
 ): Promise<SailingSpace[]> {
   const url = `/api/wsdot-sailingspace?terminalId=${terminalId}`
 
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch sailing space: ${response.statusText}`)
-  }
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      // Sailing space data is optional - don't fail if unavailable
+      console.warn(`Sailing space unavailable for terminal ${terminalId}: ${response.status}`)
+      return []
+    }
 
-  const data: TerminalSailingSpaceResponse = await response.json()
+    const data: TerminalSailingSpaceResponse = await response.json()
 
-  if (!data.DepartingSpaces) {
-    console.warn('No DepartingSpaces in response:', data)
+    if (!data.DepartingSpaces) {
+      console.warn('No DepartingSpaces in response:', data)
+      return []
+    }
+
+    return data.DepartingSpaces
+      .filter(s => !s.IsCancelled)
+      .map(sailing => {
+        const spaces = sailing.SpaceForArrivalTerminals?.[0]
+        return {
+          departureTime: parseWsdotDate(sailing.Departure),
+          driveUpSpaceCount: spaces?.DriveUpSpaceCount ?? 0,
+          reservationSpaceCount: 0, // Not provided in this endpoint
+          totalSpaces: spaces?.MaxSpaceCount ?? 0,
+          estimatedWait: null,
+        }
+      })
+  } catch (err) {
+    // Network or parsing errors - sailing space is optional
+    console.warn(`Failed to fetch sailing space for terminal ${terminalId}:`, err)
     return []
   }
-
-  return data.DepartingSpaces
-    .filter(s => !s.IsCancelled)
-    .map(sailing => {
-      const spaces = sailing.SpaceForArrivalTerminals?.[0]
-      return {
-        departureTime: parseWsdotDate(sailing.Departure),
-        driveUpSpaceCount: spaces?.DriveUpSpaceCount ?? 0,
-        reservationSpaceCount: 0, // Not provided in this endpoint
-        totalSpaces: spaces?.MaxSpaceCount ?? 0,
-        estimatedWait: null,
-      }
-    })
 }
 
 export async function getVesselLocations(): Promise<VesselLocation[]> {
