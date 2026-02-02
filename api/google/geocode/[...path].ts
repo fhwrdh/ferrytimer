@@ -6,35 +6,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Google Maps API key not configured' })
   }
 
-  const { path, ...queryParams } = req.query
-  const pathString = Array.isArray(path) ? path.join('/') : path || ''
+  // Handle both address and latlng (reverse geocode)
+  const { address, latlng } = req.query
 
-  // Build query string from remaining params (excluding vercel's path params)
-  const queryEntries = Object.entries(queryParams)
-    .filter(([key]) => !key.includes('path'))
-    .map(([key, val]) => `${key}=${encodeURIComponent(Array.isArray(val) ? val[0] : val || '')}`)
-
-  queryEntries.push(`key=${apiKey}`)
-  const queryString = queryEntries.join('&')
-
-  const url = `https://maps.googleapis.com/maps/api/geocode/${pathString}?${queryString}`
+  let url: string
+  if (address) {
+    const addressStr = Array.isArray(address) ? address[0] : address
+    url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressStr)}&key=${apiKey}`
+  } else if (latlng) {
+    const latlngStr = Array.isArray(latlng) ? latlng[0] : latlng
+    url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(latlngStr)}&key=${apiKey}`
+  } else {
+    return res.status(400).json({ error: 'Address or latlng parameter required' })
+  }
 
   try {
-    const response = await fetch(url, {
-      method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
+    const response = await fetch(url)
     const data = await response.json()
     res.status(response.status).json(data)
   } catch (error) {
     console.error('Google Geocode proxy error:', error)
     res.status(500).json({
       error: 'Failed to fetch from Google Geocoding API',
-      details: error instanceof Error ? error.message : String(error),
-      url: url.replace(apiKey, 'REDACTED')
+      details: error instanceof Error ? error.message : String(error)
     })
   }
 }

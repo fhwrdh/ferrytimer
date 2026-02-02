@@ -6,18 +6,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'WSDOT API key not configured' })
   }
 
-  const { path, ...queryParams } = req.query
-  const pathString = Array.isArray(path) ? path.join('/') : path || ''
+  // Get the full path after /api/wsdot/
+  const fullUrl = req.url || ''
+  const pathMatch = fullUrl.match(/\/api\/wsdot\/(.*)/)
+  const apiPath = pathMatch ? pathMatch[1] : ''
 
-  // Build query string from remaining params (excluding vercel's path params)
-  const queryEntries = Object.entries(queryParams)
-    .filter(([key]) => !key.includes('path'))
-    .map(([key, val]) => `${key}=${encodeURIComponent(Array.isArray(val) ? val[0] : val || '')}`)
-
-  queryEntries.push(`apiaccesscode=${apiKey}`)
-  const queryString = queryEntries.join('&')
-
-  const url = `https://www.wsdot.wa.gov/ferries/api/${pathString}?${queryString}`
+  // Construct WSDOT URL
+  const separator = apiPath.includes('?') ? '&' : '?'
+  const url = `https://www.wsdot.wa.gov/ferries/api/${apiPath}${separator}apiaccesscode=${apiKey}`
 
   try {
     const response = await fetch(url, {
@@ -28,8 +24,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
 
     const data = await response.text()
-
-    // Forward the response
     res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json')
     res.status(response.status).send(data)
   } catch (error) {
