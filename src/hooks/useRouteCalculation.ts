@@ -29,6 +29,14 @@ interface UseRouteCalculationResult {
 // Poulsbo area - for drive-around routing via Tacoma
 const TACOMA_NARROWS_WAYPOINT: Location = { lat: 47.2690, lng: -122.5515 }
 
+// Check if two locations are very close (within ~500m)
+function isNearby(loc1: Location, loc2: Location): boolean {
+  const latDiff = Math.abs(loc1.lat - loc2.lat)
+  const lngDiff = Math.abs(loc1.lng - loc2.lng)
+  // ~0.005 degrees ≈ 500m at Seattle's latitude
+  return latDiff < 0.005 && lngDiff < 0.005
+}
+
 export function useRouteCalculation({
   currentLocation,
   homeLocation,
@@ -47,6 +55,13 @@ export function useRouteCalculation({
 
     if (!wsdotApiKey || !googleMapsApiKey) {
       setError('Missing API keys. Please configure in settings.')
+      return
+    }
+
+    // Check if already at home
+    if (isNearby(currentLocation, homeLocation)) {
+      setRoutes([])
+      setError('You\'re already home! 🏠')
       return
     }
 

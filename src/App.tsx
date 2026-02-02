@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Location, RouteOption } from './types'
 import { useRouteCalculation } from './hooks/useRouteCalculation'
 import { reverseGeocode } from './api/routes'
@@ -23,6 +23,7 @@ function App() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [usingTestLocation, setUsingTestLocation] = useState<string | null>(null)
   const [friendlyLocationName, setFriendlyLocationName] = useState<string | null>(null)
+  const usingTestLocationRef = useRef<boolean>(false)
 
   // Load config from localStorage, with env var fallbacks for development
   const [config, setConfig] = useState(() => {
@@ -55,6 +56,9 @@ function App() {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        // Don't overwrite test location with GPS
+        if (usingTestLocationRef.current) return
+
         setCurrentLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
@@ -62,6 +66,9 @@ function App() {
         setLocationError(null)
       },
       (error) => {
+        // Don't show GPS errors when using test location
+        if (usingTestLocationRef.current) return
+
         setLocationError(`Location error: ${error.message}`)
       },
       {
@@ -103,12 +110,14 @@ function App() {
   }
 
   const setTestLocation = (name: string, location: Location) => {
+    usingTestLocationRef.current = true
     setCurrentLocation(location)
     setUsingTestLocation(name)
     setLocationError(null)
   }
 
   const clearTestLocation = () => {
+    usingTestLocationRef.current = false
     setCurrentLocation(null)
     setUsingTestLocation(null)
     setLocationError(null)
@@ -149,10 +158,12 @@ function App() {
     )
   }
 
-  if (showDetails && routes.length > 0) {
+  if (showDetails && currentLocation && config.homeLocation) {
     return (
       <RouteDetails
         routes={routes}
+        currentLocation={currentLocation}
+        homeLocation={config.homeLocation}
         onClose={() => setShowDetails(false)}
         onRefresh={refresh}
       />
@@ -253,7 +264,7 @@ function App() {
         </div>
       )}
 
-      {!isLoading && routes.length > 0 && (
+      {!isLoading && currentLocation && (
         <footer className="footer">
           <button className="refresh-button" onClick={refresh}>
             Refresh
