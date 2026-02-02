@@ -35,6 +35,14 @@ export interface VesselLocation {
   eta: Date | null
 }
 
+export type RiskLevel = 'low' | 'medium' | 'high'
+
+export interface RouteRisks {
+  timingRisk: RiskLevel | null      // How tight is the timing to catch ferry?
+  spaceRisk: RiskLevel | null       // How likely to get a spot?
+  overall: RiskLevel
+}
+
 export interface RouteOption {
   name: string
   type: 'ferry' | 'drive-around'
@@ -47,6 +55,7 @@ export interface RouteOption {
   spacesAvailable: number | null
   canMakeNextFerry: boolean | null
   missedSailings: Date[] // Sailings that depart before you can arrive
+  risks: RouteRisks
 }
 
 export interface Config {
@@ -54,4 +63,8 @@ export interface Config {
   homeLocation: Location | null
   wsdotApiKey: string
   googleMapsApiKey: string
+  ferryPreferenceBias: number // Minutes to add to drive-around (0 = neutral, 15 = prefer ferry)
 }
+
+// Close call threshold in minutes
+export const CLOSE_CALL_THRESHOLD = 15

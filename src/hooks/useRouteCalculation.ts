@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Location, RouteOption } from '../types'
+import type { Location, RouteOption, RiskLevel } from '../types'
 import {
   getTerminalSailingSpace,
   getScheduleToday,
@@ -104,7 +104,7 @@ export function useRouteCalculation({
         getVesselLocations(wsdotApiKey),
       ])
 
-      // Drive around option
+      // Drive around option - always low risk (predictable, no waiting)
       const driveAroundTotal = driveAroundToTacoma + driveAroundFromTacoma
       results.push({
         name: 'DRIVE AROUND',
@@ -118,6 +118,7 @@ export function useRouteCalculation({
         spacesAvailable: null,
         canMakeNextFerry: null,
         missedSailings: [],
+        risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
       })
 
       // Bainbridge option
@@ -186,6 +187,28 @@ interface CalculateFerryRouteParams {
 // Loading time after vessel arrives at dock (minutes)
 const VESSEL_LOADING_TIME = 15
 
+// Risk assessment thresholds
+function assessTimingRisk(waitMinutes: number | null): RiskLevel | null {
+  if (waitMinutes === null) return null
+  if (waitMinutes < 10) return 'high'      // Very tight
+  if (waitMinutes < 20) return 'medium'    // Cutting it close
+  return 'low'                              // Comfortable buffer
+}
+
+function assessSpaceRisk(spaces: number | null): RiskLevel | null {
+  if (spaces === null) return null
+  if (spaces < 10) return 'high'           // Might not get on
+  if (spaces < 30) return 'medium'         // Getting tight
+  return 'low'                              // Plenty of room
+}
+
+function calculateOverallRisk(timing: RiskLevel | null, space: RiskLevel | null): RiskLevel {
+  const risks = [timing, space].filter(Boolean) as RiskLevel[]
+  if (risks.includes('high')) return 'high'
+  if (risks.includes('medium')) return 'medium'
+  return 'low'
+}
+
 function calculateFerryRoute({
   name,
   now,
@@ -250,6 +273,7 @@ function calculateFerryRoute({
       spacesAvailable: null,
       canMakeNextFerry: false,
       missedSailings,
+      risks: { timingRisk: null, spaceRisk: null, overall: 'high' },
     }
   }
 
@@ -269,6 +293,11 @@ function calculateFerryRoute({
 
   const totalTime = driveToTerminal + waitTime + crossingTime + driveFromTerminal
 
+  // Calculate risks
+  const timingRisk = assessTimingRisk(waitTime)
+  const spaceRisk = assessSpaceRisk(spacesAvailable)
+  const overallRisk = calculateOverallRisk(timingRisk, spaceRisk)
+
   return {
     name,
     type: 'ferry',
@@ -281,5 +310,6 @@ function calculateFerryRoute({
     spacesAvailable,
     canMakeNextFerry: canMakeIt,
     missedSailings,
+    risks: { timingRisk, spaceRisk, overall: overallRisk },
   }
 }

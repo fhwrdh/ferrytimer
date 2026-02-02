@@ -77,12 +77,6 @@ export function RouteDetails({ routes, currentLocation, homeLocation, onClose, o
     })
   }
 
-  const formatDurationWithArrival = (minutes: number | null) => {
-    if (minutes === null || minutes === Infinity) return '—'
-    const arrivalTime = new Date(now.getTime() + minutes * 60 * 1000)
-    return `${formatTime(minutes)} (${formatClockTime(arrivalTime)})`
-  }
-
   const winner = routes[0]
 
   return (

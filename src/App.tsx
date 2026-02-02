@@ -36,6 +36,7 @@ function App() {
         homeLocation: parsed.homeLocation,
         wsdotApiKey: parsed.wsdotApiKey || import.meta.env.VITE_WSDOT_API_KEY || '',
         googleMapsApiKey: parsed.googleMapsApiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+        ferryPreferenceBias: parsed.ferryPreferenceBias ?? 0,
       }
     }
     // No saved config - use env vars if available
@@ -44,6 +45,7 @@ function App() {
       homeLocation: null,
       wsdotApiKey: import.meta.env.VITE_WSDOT_API_KEY || '',
       googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+      ferryPreferenceBias: 0,
     }
   })
 
@@ -225,7 +227,7 @@ function App() {
         )}
 
         {!isLoading && !error && bestRoute && (
-          <Recommendation route={bestRoute} allRoutes={routes} />
+          <Recommendation allRoutes={routes} ferryBias={config.ferryPreferenceBias} />
         )}
 
         {!isLoading && !error && !bestRoute && !locationError && !usingTestLocation && (
@@ -264,24 +266,43 @@ function App() {
         </div>
       )}
 
-      {!isLoading && currentLocation && (
+      {currentLocation && (
         <footer className="footer">
-          <button className="refresh-button" onClick={refresh}>
-            Refresh
-          </button>
-          <button
-            className="location-button"
-            onClick={() => setShowLocationPicker(true)}
-          >
-            📍 {usingTestLocation || 'GPS'}
-          </button>
+          <div className="footer-slider">
+            <span className="slider-icon">⛴️</span>
+            <input
+              type="range"
+              min="0"
+              max="30"
+              step="5"
+              value={config.ferryPreferenceBias}
+              onChange={(e) => saveConfig({ ...config, ferryPreferenceBias: parseInt(e.target.value, 10) })}
+            />
+            <span className="slider-icon">🚗</span>
+            <span className="slider-value">
+              {config.ferryPreferenceBias > 0 ? `+${config.ferryPreferenceBias}` : '0'}
+            </span>
+          </div>
+          <div className="footer-buttons">
+            <button className="refresh-button" onClick={refresh} disabled={isLoading}>
+              {isLoading ? '...' : 'Refresh'}
+            </button>
+            <button
+              className="location-button"
+              onClick={() => setShowLocationPicker(true)}
+            >
+              📍 {usingTestLocation || 'GPS'}
+            </button>
+          </div>
         </footer>
       )}
     </div>
   )
 }
 
-function Recommendation({ route, allRoutes }: { route: RouteOption; allRoutes: RouteOption[] }) {
+function Recommendation({ allRoutes, ferryBias }: { allRoutes: RouteOption[]; ferryBias: number }) {
+  const now = new Date()
+
   const formatTime = (minutes: number) => {
     if (minutes === Infinity) return '—'
     const hours = Math.floor(minutes / 60)
@@ -292,31 +313,160 @@ function Recommendation({ route, allRoutes }: { route: RouteOption; allRoutes: R
     return `${mins}m`
   }
 
-  const getRouteColor = (r: RouteOption) => {
-    if (r.name === route.name) return 'var(--winner-color)'
-    return 'var(--text-muted)'
+  const formatClockTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
   }
 
-  // Is the winner significantly better? (more than 10 minutes)
-  const secondBest = allRoutes[1]
-  const isClearWinner = secondBest && route.totalTimeMinutes < secondBest.totalTimeMinutes - 10
+  const getArrivalTime = (minutes: number) => {
+    if (minutes === Infinity) return '—'
+    return formatClockTime(new Date(now.getTime() + minutes * 60 * 1000))
+  }
 
+  // Apply ferry bias to determine effective winner
+  const adjustedRoutes = allRoutes.map(r => ({
+    ...r,
+    adjustedTime: r.type === 'drive-around'
+      ? r.totalTimeMinutes + ferryBias
+      : r.totalTimeMinutes
+  })).sort((a, b) => a.adjustedTime - b.adjustedTime)
+
+  const effectiveWinner = adjustedRoutes[0]
+  const secondBest = adjustedRoutes[1]
+
+  // Check if it's a close call (within 15 minutes)
+  const timeDiff = secondBest ? Math.abs(effectiveWinner.adjustedTime - secondBest.adjustedTime) : Infinity
+  const isCloseCall = timeDiff <= 15 && secondBest
+
+  // Get trade-offs for display
+  const getTradeoffs = (r: RouteOption) => {
+    const pros: string[] = []
+    const cons: string[] = []
+
+    if (r.type === 'drive-around') {
+      pros.push('Predictable timing')
+      pros.push('No waiting')
+      cons.push('All driving, no break')
+      cons.push('Less scenic')
+    } else {
+      // Ferry route
+      pros.push('Scenic, can relax')
+      pros.push('Break from driving')
+
+      // Timing risk
+      if (r.risks.timingRisk === 'high') {
+        cons.push(`Tight timing (${r.waitTimeMinutes}min buffer)`)
+      } else if (r.risks.timingRisk === 'medium') {
+        cons.push(`Close timing (${r.waitTimeMinutes}min buffer)`)
+      }
+
+      // Space risk
+      if (r.risks.spaceRisk === 'high') {
+        cons.push(`Only ${r.spacesAvailable} spaces left`)
+      } else if (r.risks.spaceRisk === 'medium') {
+        cons.push(`${r.spacesAvailable} spaces available`)
+      }
+
+      if (r.risks.overall === 'low' && cons.length === 0) {
+        pros.push('Good buffer time')
+        pros.push('Plenty of space')
+      }
+    }
+
+    return { pros, cons }
+  }
+
+  if (isCloseCall) {
+    return (
+      <div className="recommendation close-call">
+        <div className="close-call-header">
+          <span className="close-call-icon">⚖️</span>
+          <h1 className="close-call-title">CLOSE CALL</h1>
+          <p className="close-call-subtitle">Within {Math.round(timeDiff)} min - your choice</p>
+        </div>
+
+        <div className="close-call-options">
+          {adjustedRoutes.slice(0, 2).map((r) => {
+            const { pros, cons } = getTradeoffs(r)
+            const riskColor = r.risks.overall === 'high' ? 'var(--accent)'
+              : r.risks.overall === 'medium' ? '#f59e0b'
+              : 'var(--winner-color)'
+
+            return (
+              <div key={r.name} className="close-call-option">
+                <div className="option-header">
+                  <span className="option-icon">{r.type === 'drive-around' ? '🚗' : '⛴️'}</span>
+                  <span className="option-name">{r.name}</span>
+                  <span className="option-duration">{formatTime(r.totalTimeMinutes)}</span>
+                </div>
+                <div className="option-times">
+                  {r.type === 'ferry' && r.nextDeparture && (
+                    <div className="option-row">
+                      <span className="option-label">Sailing</span>
+                      <span className="option-value">{formatClockTime(r.nextDeparture)}</span>
+                    </div>
+                  )}
+                  <div className="option-row">
+                    <span className="option-label">Home</span>
+                    <span className="option-value">{getArrivalTime(r.totalTimeMinutes)}</span>
+                  </div>
+                </div>
+                <div className="option-risk" style={{ color: riskColor }}>
+                  {r.risks.overall === 'low' ? '✓ Low risk' : r.risks.overall === 'medium' ? '⚠ Some risk' : '⚠ Higher risk'}
+                </div>
+                <div className="option-tradeoffs">
+                  {pros.map((p, i) => (
+                    <div key={i} className="tradeoff pro">✓ {p}</div>
+                  ))}
+                  {cons.map((c, i) => (
+                    <div key={i} className="tradeoff con">⚠ {c}</div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Clear winner
   return (
     <div className="recommendation">
-      <div className={`winner ${isClearWinner ? 'clear-winner' : ''}`}>
-        <span className="winner-label">
-          {route.type === 'drive-around' ? '🚗' : '⛴️'}
-        </span>
-        <h1 className="winner-name">{route.name}</h1>
-        <p className="winner-time">{formatTime(route.totalTimeMinutes)}</p>
+      <div className="winner clear-winner">
+        <div className="winner-header">
+          <span className="winner-icon">
+            {effectiveWinner.type === 'drive-around' ? '🚗' : '⛴️'}
+          </span>
+          <h1 className="winner-name">{effectiveWinner.name}</h1>
+          <span className="winner-duration">{formatTime(effectiveWinner.totalTimeMinutes)}</span>
+        </div>
+        <div className="winner-times">
+          {effectiveWinner.type === 'ferry' && effectiveWinner.nextDeparture && (
+            <div className="winner-row">
+              <span className="winner-label">Sailing</span>
+              <span className="winner-value">{formatClockTime(effectiveWinner.nextDeparture)}</span>
+            </div>
+          )}
+          <div className="winner-row">
+            <span className="winner-label">Home</span>
+            <span className="winner-value">{getArrivalTime(effectiveWinner.totalTimeMinutes)}</span>
+          </div>
+        </div>
+        {effectiveWinner.risks.overall !== 'low' && (
+          <p className="winner-risk" style={{ color: effectiveWinner.risks.overall === 'high' ? 'var(--accent)' : '#f59e0b' }}>
+            {effectiveWinner.risks.overall === 'high' ? '⚠ Higher risk' : '⚠ Some risk'}
+          </p>
+        )}
       </div>
 
       <div className="comparison">
         {allRoutes.map((r) => (
           <div
             key={r.name}
-            className={`route-summary ${r.name === route.name ? 'winner' : ''}`}
-            style={{ color: getRouteColor(r) }}
+            className={`route-summary ${r.name === effectiveWinner.name ? 'winner' : ''}`}
           >
             <span className="route-name">{r.name}</span>
             <span className="route-time">{formatTime(r.totalTimeMinutes)}</span>

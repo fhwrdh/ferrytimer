@@ -96,27 +96,31 @@
 }
 
 .winner {
-  text-align: center;
+  width: 100%;
 }
 
-.winner-label {
+.winner-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.winner-icon {
   font-size: 48px;
-  display: block;
-  margin-bottom: 8px;
 }
 
 .winner-name {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: 900;
   color: var(--winner-color);
   text-transform: uppercase;
   letter-spacing: 2px;
   margin: 0;
-  line-height: 1.1;
+  flex: 1;
 }
 
 .clear-winner .winner-name {
-  font-size: 56px;
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -129,11 +133,32 @@
   }
 }
 
-.winner-time {
-  font-size: 32px;
-  color: var(--text-primary);
-  margin: 12px 0 0;
+.winner-duration {
+  font-size: 24px;
+  color: var(--text-muted);
   font-weight: 300;
+}
+
+.winner-times {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.winner-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 18px;
+}
+
+.winner-label {
+  color: var(--text-muted);
+}
+
+.winner-value {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .comparison {
@@ -166,8 +191,60 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   padding: 16px 24px;
   background: var(--bg-secondary);
+}
+
+.footer-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 45%;
+}
+
+.footer-slider input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--bg-card);
+  border-radius: 3px;
+}
+
+.footer-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: var(--winner-color);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.footer-slider input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: var(--winner-color);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-icon {
+  font-size: 14px;
+}
+
+.slider-value {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 24px;
+}
+
+.footer-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .refresh-button {
@@ -250,6 +327,35 @@
 
 .form-group input:focus {
   border-color: var(--winner-color);
+}
+
+.form-group input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background: var(--bg-card);
+  border-radius: 4px;
+  border: none;
+  padding: 0;
+}
+
+.form-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--winner-color);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.form-group input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: var(--winner-color);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
 }
 
 .form-group small {
@@ -476,6 +582,121 @@
 .missed-sailings span:last-child {
   text-decoration: line-through;
   opacity: 0.7;
+}
+
+/* Close call styles */
+.close-call-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.close-call-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.close-call-title {
+  font-size: 32px;
+  font-weight: 900;
+  color: #f59e0b;
+  margin: 0;
+  letter-spacing: 2px;
+}
+
+.close-call-subtitle {
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.close-call-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.close-call-option {
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  padding: 16px;
+}
+
+.option-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.option-icon {
+  font-size: 24px;
+}
+
+.option-name {
+  font-weight: 700;
+  font-size: 18px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex: 1;
+}
+
+.option-duration {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--text-muted);
+}
+
+.option-times {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.option-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.option-label {
+  color: var(--text-muted);
+}
+
+.option-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.option-risk {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.option-tradeoffs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tradeoff {
+  font-size: 13px;
+}
+
+.tradeoff.pro {
+  color: var(--winner-color);
+}
+
+.tradeoff.con {
+  color: var(--accent);
+}
+
+.winner-risk {
+  font-size: 14px;
+  margin-top: 8px;
 }
 
 /* Google Maps link */

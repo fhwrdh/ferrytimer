@@ -13,6 +13,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
   const [homeAddress, setHomeAddress] = useState(config.homeAddress)
   const [wsdotApiKey, setWsdotApiKey] = useState(config.wsdotApiKey)
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState(config.googleMapsApiKey)
+  const [ferryBias, setFerryBias] = useState(config.ferryPreferenceBias)
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,6 +40,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
         homeLocation,
         wsdotApiKey,
         googleMapsApiKey,
+        ferryPreferenceBias: ferryBias,
       })
 
       if (!isInitialSetup) {
@@ -119,6 +121,22 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
               Google Cloud Console
             </a>
             . Enable Routes API and Geocoding API.
+          </small>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="ferryBias">Ferry Preference: {ferryBias > 0 ? `+${ferryBias}min` : 'Neutral'}</label>
+          <input
+            id="ferryBias"
+            type="range"
+            min="0"
+            max="30"
+            step="5"
+            value={ferryBias}
+            onChange={(e) => setFerryBias(parseInt(e.target.value, 10))}
+          />
+          <small>
+            Adds minutes to drive-around when comparing. Higher = prefer ferry even if slower.
           </small>
         </div>
 
