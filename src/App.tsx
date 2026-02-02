@@ -257,7 +257,7 @@ function App() {
       {currentLocation && (
         <footer className="footer">
           <div className="footer-slider">
-            <span className="slider-icon">⛴️</span>
+            <span className="slider-icon">🚗</span>
             <input
               type="range"
               min="0"
@@ -266,7 +266,7 @@ function App() {
               value={config.ferryPreferenceBias}
               onChange={(e) => saveConfig({ ...config, ferryPreferenceBias: parseInt(e.target.value, 10) })}
             />
-            <span className="slider-icon">🚗</span>
+            <span className="slider-icon">⛴️</span>
             <span className="slider-value">
               {config.ferryPreferenceBias > 0 ? `+${config.ferryPreferenceBias}` : '0'}
             </span>
