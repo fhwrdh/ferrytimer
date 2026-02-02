@@ -6,22 +6,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Google Maps API key not configured' })
   }
 
-  // The frontend calls /api/google/routes/directions/v2:computeRoutes
-  const fullUrl = req.url || ''
-  const pathMatch = fullUrl.match(/\/api\/google\/routes\/(.*)/)
-  const apiPath = pathMatch ? pathMatch[1].split('?')[0] : 'directions/v2:computeRoutes'
-
-  const url = `https://routes.googleapis.com/${apiPath}`
+  const url = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 
   try {
     const response = await fetch(url, {
-      method: req.method,
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': req.headers['x-goog-fieldmask'] as string || '',
+        'X-Goog-FieldMask': req.headers['x-goog-fieldmask'] as string || 'routes.duration',
       },
-      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+      body: JSON.stringify(req.body),
     })
 
     const data = await response.json()

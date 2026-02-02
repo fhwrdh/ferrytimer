@@ -8,34 +8,49 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       proxy: {
-        '/api/wsdot': {
-          target: 'https://www.wsdot.wa.gov',
+        '/api/geocode': {
+          target: 'https://maps.googleapis.com',
           changeOrigin: true,
           rewrite: (path) => {
-            const newPath = path.replace(/^\/api\/wsdot/, '/ferries/api')
-            // Inject API key
-            const separator = newPath.includes('?') ? '&' : '?'
-            return `${newPath}${separator}apiaccesscode=${env.WSDOT_API_KEY}`
+            const url = new URL(path, 'http://localhost')
+            const params = url.searchParams
+            params.set('key', env.GOOGLE_MAPS_API_KEY || '')
+            return `/maps/api/geocode/json?${params.toString()}`
           },
         },
-        '/api/google/routes': {
+        '/api/routes': {
           target: 'https://routes.googleapis.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/google\/routes/, ''),
+          rewrite: () => '/directions/v2:computeRoutes',
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               proxyReq.setHeader('X-Goog-Api-Key', env.GOOGLE_MAPS_API_KEY || '')
             })
           },
         },
-        '/api/google/geocode': {
-          target: 'https://maps.googleapis.com',
+        '/api/wsdot-sailingspace': {
+          target: 'https://www.wsdot.wa.gov',
           changeOrigin: true,
           rewrite: (path) => {
-            const newPath = path.replace(/^\/api\/google\/geocode/, '/maps/api/geocode')
-            // Inject API key
-            const separator = newPath.includes('?') ? '&' : '?'
-            return `${newPath}${separator}key=${env.GOOGLE_MAPS_API_KEY}`
+            const url = new URL(path, 'http://localhost')
+            const terminalId = url.searchParams.get('terminalId')
+            return `/ferries/api/terminals/rest/terminalsailingspace/${terminalId}?apiaccesscode=${env.WSDOT_API_KEY}`
+          },
+        },
+        '/api/wsdot-vessels': {
+          target: 'https://www.wsdot.wa.gov',
+          changeOrigin: true,
+          rewrite: () => `/ferries/api/vessels/rest/vessellocations?apiaccesscode=${env.WSDOT_API_KEY}`,
+        },
+        '/api/wsdot-schedule': {
+          target: 'https://www.wsdot.wa.gov',
+          changeOrigin: true,
+          rewrite: (path) => {
+            const url = new URL(path, 'http://localhost')
+            const departingId = url.searchParams.get('departingId')
+            const arrivingId = url.searchParams.get('arrivingId')
+            const onlyRemaining = url.searchParams.get('onlyRemaining') === 'true'
+            return `/ferries/api/schedule/rest/scheduletoday/${departingId}/${arrivingId}/${onlyRemaining}?apiaccesscode=${env.WSDOT_API_KEY}`
           },
         },
       },

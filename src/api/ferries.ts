@@ -1,8 +1,5 @@
 import type { SailingSpace, VesselLocation } from '../types'
 
-// Always use proxy - it handles CORS and API keys server-side
-const BASE_URL = '/api/wsdot'
-
 // Terminal IDs for our routes
 export const TERMINALS = {
   SEATTLE: 7,      // Colman Dock
@@ -74,7 +71,7 @@ interface VesselLocationResponse {
 export async function getTerminalSailingSpace(
   terminalId: number
 ): Promise<SailingSpace[]> {
-  const url = `${BASE_URL}/terminals/rest/terminalsailingspace/${terminalId}`
+  const url = `/api/wsdot-sailingspace?terminalId=${terminalId}`
 
   const response = await fetch(url)
   if (!response.ok) {
@@ -103,7 +100,7 @@ export async function getTerminalSailingSpace(
 }
 
 export async function getVesselLocations(): Promise<VesselLocation[]> {
-  const url = `${BASE_URL}/vessels/rest/vessellocations`
+  const url = `/api/wsdot-vessels`
 
   const response = await fetch(url)
   if (!response.ok) {
@@ -150,7 +147,7 @@ export async function getScheduleToday(
   arrivingTerminalId: number,
   onlyRemaining: boolean = true
 ): Promise<Array<{ departureTime: Date; arrivalTime: Date; vesselName: string }>> {
-  const url = `${BASE_URL}/schedule/rest/scheduletoday/${departingTerminalId}/${arrivingTerminalId}/${onlyRemaining}`
+  const url = `/api/wsdot-schedule?departingId=${departingTerminalId}&arrivingId=${arrivingTerminalId}&onlyRemaining=${onlyRemaining}`
 
   const response = await fetch(url)
   if (!response.ok) {

@@ -1,8 +1,8 @@
 import type { Location } from '../types'
 
-// Always use proxy - it handles CORS and API keys server-side
-const ROUTES_API_URL = '/api/google/routes/directions/v2:computeRoutes'
-const GEOCODE_API_URL = '/api/google/geocode/json'
+// Simple API endpoints - serverless functions handle CORS and API keys
+const ROUTES_API_URL = '/api/routes'
+const GEOCODE_API_URL = '/api/geocode'
 
 interface RouteResponse {
   routes: Array<{
