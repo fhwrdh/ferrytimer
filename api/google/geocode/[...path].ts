@@ -9,9 +9,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { path, ...queryParams } = req.query
   const pathString = Array.isArray(path) ? path.join('/') : path || ''
 
-  // Build query string from remaining params (excluding 'path')
+  // Build query string from remaining params (excluding vercel's path params)
   const queryEntries = Object.entries(queryParams)
-    .filter(([key]) => key !== 'path')
+    .filter(([key]) => !key.includes('path'))
     .map(([key, val]) => `${key}=${encodeURIComponent(Array.isArray(val) ? val[0] : val || '')}`)
 
   queryEntries.push(`key=${apiKey}`)
