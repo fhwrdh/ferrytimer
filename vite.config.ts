@@ -63,8 +63,8 @@ export default defineConfig(({ mode }) => {
           name: 'Ferry Timer',
           short_name: 'FerryTimer',
           description: 'Should I take the ferry or drive around?',
-          theme_color: '#1a1a2e',
-          background_color: '#1a1a2e',
+          theme_color: '#0b1315',
+          background_color: '#0b1315',
           display: 'standalone',
           icons: [
             {

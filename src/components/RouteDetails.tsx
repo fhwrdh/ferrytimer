@@ -1,4 +1,5 @@
 import type { Location, RouteOption } from '../types'
+import { CarIcon, FerryIcon, CloseIcon } from './Icons'
 
 // Terminal locations for Google Maps links
 const TERMINALS = {
@@ -56,6 +57,11 @@ function getGoogleMapsUrl(
   return buildGoogleMapsUrl(currentLocation, homeLocation)
 }
 
+function displayName(route: RouteOption) {
+  if (route.type === 'drive-around') return 'Drive around'
+  return route.name.charAt(0) + route.name.slice(1).toLowerCase()
+}
+
 export function RouteDetails({ routes, currentLocation, homeLocation, onClose, onRefresh }: RouteDetailsProps) {
   const now = new Date()
 
@@ -80,113 +86,110 @@ export function RouteDetails({ routes, currentLocation, homeLocation, onClose, o
   const winner = routes[0]
 
   return (
-    <div className="details">
-      <header className="details-header">
-        <h1>Route Comparison</h1>
-        <button className="close-button" onClick={onClose}>
-          ✕
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">Every option</h1>
+        <button className="icon-button" onClick={onClose} aria-label="Close">
+          <CloseIcon />
         </button>
-      </header>
+      </div>
 
-      {routes.map((route) => (
-        <div
-          key={route.name}
-          className={`route-card ${route.name === winner.name ? 'winner' : ''}`}
-        >
-          <div className="route-card-header">
-            <span className="route-card-name">
-              {route.type === 'drive-around' ? '🚗 ' : '⛴️ '}
-              {route.name}
-            </span>
-            <span className="route-card-total">{formatTime(route.totalTimeMinutes)}</span>
-          </div>
-
-          {route.type === 'ferry' && (() => {
-            // Calculate cumulative times
-            const arriveTerminal = route.driveToTerminalMinutes
-              ? new Date(now.getTime() + route.driveToTerminalMinutes * 60 * 1000)
-              : null
-            const ferryDeparts = route.nextDeparture
-            const ferryArrives = ferryDeparts && route.ferryTimeMinutes
-              ? new Date(ferryDeparts.getTime() + route.ferryTimeMinutes * 60 * 1000)
-              : null
-            const arriveHome = ferryArrives && route.driveFromTerminalMinutes
-              ? new Date(ferryArrives.getTime() + route.driveFromTerminalMinutes * 60 * 1000)
-              : null
-
-            return (
-              <div className="route-card-breakdown">
-                {route.missedSailings.length > 0 && (
-                  <div className="breakdown-row missed-sailings">
-                    <span>Missed</span>
-                    <span>{route.missedSailings.map(d => formatClockTime(d)).join(', ')}</span>
-                  </div>
-                )}
-                <div className="breakdown-row">
-                  <span>Arrive at terminal</span>
-                  <span>{formatTime(route.driveToTerminalMinutes)} → {formatClockTime(arriveTerminal)}</span>
-                </div>
-                <div className="breakdown-row">
-                  <span>Wait at terminal</span>
-                  <span>{formatTime(route.waitTimeMinutes)}</span>
-                </div>
-                <div className="breakdown-row">
-                  <span>Ferry departs</span>
-                  <span>{formatClockTime(ferryDeparts)}</span>
-                </div>
-                <div className="breakdown-row">
-                  <span>Ferry arrives</span>
-                  <span>{formatTime(route.ferryTimeMinutes)} → {formatClockTime(ferryArrives)}</span>
-                </div>
-                <div className="breakdown-row">
-                  <span>Arrive home</span>
-                  <span>{formatTime(route.driveFromTerminalMinutes)} → {formatClockTime(arriveHome)}</span>
-                </div>
-                {route.spacesAvailable !== null && (
-                  <div className="breakdown-row" style={{ marginTop: 8 }}>
-                    <span>Spaces available</span>
-                    <span
-                      className={`badge ${route.spacesAvailable > 0 ? 'spaces' : 'no-spaces'}`}
-                    >
-                      {route.spacesAvailable > 0 ? route.spacesAvailable : 'FULL'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-
-          {route.type === 'drive-around' && (() => {
-            const arriveHome = route.totalTimeMinutes !== Infinity
-              ? new Date(now.getTime() + route.totalTimeMinutes * 60 * 1000)
-              : null
-
-            return (
-              <div className="route-card-breakdown">
-                <div className="breakdown-row">
-                  <span>Via Tacoma / Narrows Bridge</span>
-                  <span>{formatTime(route.totalTimeMinutes)} → {formatClockTime(arriveHome)}</span>
-                </div>
-              </div>
-            )
-          })()}
-
-          <a
-            href={getGoogleMapsUrl(route.name, route.type, currentLocation, homeLocation)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="maps-link"
-            onClick={(e) => e.stopPropagation()}
+      <div className="page-body">
+        {routes.map((route) => (
+          <div
+            key={route.name}
+            className={`detail-route ${route.name === winner.name ? 'is-best' : ''}`}
           >
-            🗺️ Open in Google Maps
-          </a>
-        </div>
-      ))}
+            <div className="detail-head">
+              <span className="detail-icon">
+                {route.type === 'drive-around' ? <CarIcon size={16} /> : <FerryIcon size={16} />}
+              </span>
+              <span className="detail-name">{displayName(route)}</span>
+              <span className="detail-total">{formatTime(route.totalTimeMinutes)}</span>
+            </div>
 
-      <div className="refresh-bar">
-        <button className="refresh-button" onClick={onRefresh}>
-          Refresh
-        </button>
+            {route.type === 'ferry' && (() => {
+              // Calculate cumulative times
+              const arriveTerminal = route.driveToTerminalMinutes
+                ? new Date(now.getTime() + route.driveToTerminalMinutes * 60 * 1000)
+                : null
+              const ferryDeparts = route.nextDeparture
+              const ferryArrives = ferryDeparts && route.ferryTimeMinutes
+                ? new Date(ferryDeparts.getTime() + route.ferryTimeMinutes * 60 * 1000)
+                : null
+              const arriveHome = ferryArrives && route.driveFromTerminalMinutes
+                ? new Date(ferryArrives.getTime() + route.driveFromTerminalMinutes * 60 * 1000)
+                : null
+
+              return (
+                <div className="detail-rows">
+                  {route.missedSailings.length > 0 && (
+                    <div className="detail-row is-missed">
+                      <span>Just missed</span>
+                      <span>{route.missedSailings.map(d => formatClockTime(d)).join(', ')}</span>
+                    </div>
+                  )}
+                  <div className="detail-row">
+                    <span>At the terminal</span>
+                    <span>{formatClockTime(arriveTerminal)} · {formatTime(route.driveToTerminalMinutes)} drive</span>
+                  </div>
+                  <div className="detail-row">
+                    <span>Waiting</span>
+                    <span>{formatTime(route.waitTimeMinutes)}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span>Sails</span>
+                    <span>{formatClockTime(ferryDeparts)}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span>Lands</span>
+                    <span>{formatClockTime(ferryArrives)} · {formatTime(route.ferryTimeMinutes)} crossing</span>
+                  </div>
+                  <div className="detail-row">
+                    <span>Home</span>
+                    <span>{formatClockTime(arriveHome)} · {formatTime(route.driveFromTerminalMinutes)} drive</span>
+                  </div>
+                  {route.spacesAvailable !== null && (
+                    <div className="detail-row">
+                      <span>Car deck</span>
+                      <span>
+                        {route.spacesAvailable > 0 ? `${route.spacesAvailable} spaces` : 'Full'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {route.type === 'drive-around' && (() => {
+              const arriveHome = route.totalTimeMinutes !== Infinity
+                ? new Date(now.getTime() + route.totalTimeMinutes * 60 * 1000)
+                : null
+
+              return (
+                <div className="detail-rows">
+                  <div className="detail-row">
+                    <span>Via the Narrows Bridge</span>
+                    <span>{formatClockTime(arriveHome)} · {formatTime(route.totalTimeMinutes)}</span>
+                  </div>
+                </div>
+              )
+            })()}
+
+            <a
+              href={getGoogleMapsUrl(route.name, route.type, currentLocation, homeLocation)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="detail-link"
+            >
+              Open in Maps
+            </a>
+          </div>
+        ))}
+
+        <div className="footer" style={{ borderTop: 'none', padding: '20px 0 0' }}>
+          <button className="text-button" onClick={onRefresh}>Refresh</button>
+        </div>
       </div>
     </div>
   )

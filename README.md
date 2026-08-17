@@ -15,9 +15,15 @@ vessel positions.
 | `KINGSTON` | drive to Edmonds → ferry → drive home |
 | `DRIVE AROUND` | south around the sound via the Tacoma Narrows |
 
-The result is either a single **clear winner** — big icon, total time, sailing
-time, arrival time — or a **CLOSE CALL** card when the top two are within 15
-minutes, laying the trade-offs out side by side so you can pick.
+The result is either a single **clear winner** — the route named large, with a
+journey rail below it whose segments are scaled to each leg's real duration — or
+**too close to call** when the top two land within 15 minutes, which drops the
+recommendation and lays out both options' trade-offs instead.
+
+Color is load-bearing rather than decorative: amber marks the recommendation and
+the sailing itself, red marks a genuine problem (tight timing, nearly full car
+deck), and everything else stays monochrome. A calm screen means nothing needs
+your attention.
 
 ## How the estimate works
 

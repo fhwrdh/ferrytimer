@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Config, Location } from '../types'
 import { geocodeAddress } from '../api/routes'
+import { CloseIcon } from './Icons'
 
 interface SettingsProps {
   config: Config
@@ -19,7 +20,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
     setError(null)
 
     if (!homeAddress) {
-      setError('Home address is required')
+      setError('Enter the address you\'re heading to.')
       return
     }
 
@@ -43,7 +44,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
         onClose()
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save settings')
+      setError(err instanceof Error ? err.message : 'That address didn\'t resolve. Try adding the city.')
     } finally {
       setIsGeocoding(false)
     }
@@ -52,21 +53,28 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
   const canSave = homeAddress && !isGeocoding
 
   return (
-    <div className="settings">
-      <header className="settings-header">
-        <h1>{isInitialSetup ? 'Setup' : 'Settings'}</h1>
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">{isInitialSetup ? 'Set up' : 'Settings'}</h1>
         {!isInitialSetup && (
-          <button className="close-button" onClick={onClose}>
-            ✕
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <CloseIcon />
           </button>
         )}
-      </header>
+      </div>
 
-      {error && <div className="error">{error}</div>}
+      <div className="page-body">
+        {isInitialSetup && (
+          <p className="notice">
+            Ferry Timer compares Bainbridge, Kingston, and driving around to get you home.
+            It needs to know where home is.
+          </p>
+        )}
 
-      <div className="settings-form">
-        <div className="form-group">
-          <label htmlFor="homeAddress">Home Address</label>
+        {error && <div className="error">{error}</div>}
+
+        <div className="field">
+          <label htmlFor="homeAddress">Home</label>
           <input
             id="homeAddress"
             type="text"
@@ -74,11 +82,13 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
             onChange={(e) => setHomeAddress(e.target.value)}
             placeholder="123 Main St, Poulsbo, WA"
           />
-          <small>Your destination (usually home)</small>
+          <span className="hint">Where you're heading. Used for every drive estimate.</span>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="ferryBias">Ferry Preference: {ferryBias > 0 ? `+${ferryBias}min` : 'Neutral'}</label>
+        <div className="field">
+          <label htmlFor="ferryBias">
+            Ferry preference {ferryBias > 0 ? `· +${ferryBias}m` : '· neutral'}
+          </label>
           <input
             id="ferryBias"
             type="range"
@@ -88,17 +98,14 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
             value={ferryBias}
             onChange={(e) => setFerryBias(parseInt(e.target.value, 10))}
           />
-          <small>
-            Adds minutes to drive-around when comparing. Higher = prefer ferry even if slower.
-          </small>
+          <span className="hint">
+            Extra driving you'd accept to take the boat instead. Biases the recommendation
+            only — the times stay honest.
+          </span>
         </div>
 
-        <button
-          className="save-button"
-          onClick={handleSave}
-          disabled={!canSave}
-        >
-          {isGeocoding ? 'Saving...' : 'Save'}
+        <button className="primary-button" onClick={handleSave} disabled={!canSave}>
+          {isGeocoding ? 'Saving…' : 'Save'}
         </button>
       </div>
     </div>

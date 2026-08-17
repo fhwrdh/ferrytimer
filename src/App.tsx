@@ -4,6 +4,7 @@ import { useRouteCalculation } from './hooks/useRouteCalculation'
 import { reverseGeocode } from './api/routes'
 import { Settings } from './components/Settings'
 import { RouteDetails } from './components/RouteDetails'
+import { CarIcon, FerryIcon, GearIcon } from './components/Icons'
 import './App.css'
 
 // Test locations - dev builds only, never shipped to production
@@ -16,6 +17,29 @@ const TEST_LOCATIONS: { name: string; location: Location }[] = [
   { name: 'University District', location: { lat: 47.6614, lng: -122.3131 } },
   { name: 'Bellevue', location: { lat: 47.6101, lng: -122.2015 } },
 ]
+
+// Where each ferry route boards
+const DEPARTS_FROM: Record<string, string> = {
+  BAINBRIDGE: 'Colman Dock',
+  KINGSTON: 'Edmonds',
+}
+
+function displayName(route: RouteOption) {
+  if (route.type === 'drive-around') return 'Drive around'
+  return route.name.charAt(0) + route.name.slice(1).toLowerCase()
+}
+
+function formatDuration(minutes: number | null) {
+  if (minutes === null || minutes === Infinity) return '—'
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
+}
+
+function formatClock(date: Date | null) {
+  if (!date) return '—'
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
 
 function App() {
   const [showSettings, setShowSettings] = useState(false)
@@ -48,7 +72,7 @@ function App() {
   // Get current location
   useEffect(() => {
     if (!navigator.geolocation) {
-      setLocationError('Geolocation not supported')
+      setLocationError('This device can\'t report a location.')
       return
     }
 
@@ -67,7 +91,7 @@ function App() {
         // Don't show GPS errors when using test location
         if (usingTestLocationRef.current) return
 
-        setLocationError(`Location error: ${error.message}`)
+        setLocationError(error.message)
       },
       {
         enableHighAccuracy: true,
@@ -125,7 +149,7 @@ function App() {
           setLocationError(null)
         },
         (err) => {
-          setLocationError(`Location error: ${err.message}`)
+          setLocationError(err.message)
         },
         {
           enableHighAccuracy: true,
@@ -162,113 +186,105 @@ function App() {
     )
   }
 
+  const hasRoutes = !isLoading && !error && !!bestRoute
+
   return (
     <div className="app">
-      <button
-        className="settings-button"
-        onClick={() => setShowSettings(true)}
-        aria-label="Settings"
-      >
-        ⚙️
-      </button>
+      <div className="topbar">
+        <div className="origin">
+          {currentLocation && (
+            <>
+              <span className="origin-label">From</span>
+              <span className="origin-value">
+                {usingTestLocation || friendlyLocationName ||
+                  `${currentLocation.lat.toFixed(3)}, ${currentLocation.lng.toFixed(3)}`}
+              </span>
+            </>
+          )}
+        </div>
+        <button className="icon-button" onClick={() => setShowSettings(true)} aria-label="Settings">
+          <GearIcon />
+        </button>
+      </div>
 
-      <main className="main" onClick={() => !isLoading && routes.length > 0 && setShowDetails(true)}>
-        {currentLocation && (
-          <div className="current-location-banner">
-            <span className="location-label">From:</span>
-            <span className="location-value">
-              {usingTestLocation || friendlyLocationName || `${currentLocation.lat.toFixed(4)}, ${currentLocation.lng.toFixed(4)}`}
-            </span>
-          </div>
-        )}
-
-        {locationError && !usingTestLocation && (
-          <div className="location-error-container">
-            <div className="error location-error">{locationError}</div>
-            <button
-              className="test-location-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                clearTestLocation()
-              }}
-            >
-              Retry location
-            </button>
-            {IS_DEV && (
-              <div className="test-locations">
-                <p>Use a test location:</p>
-                <div className="test-location-buttons">
-                  {TEST_LOCATIONS.map((loc) => (
-                    <button
-                      key={loc.name}
-                      className="test-location-btn"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setTestLocation(loc.name, loc.location)
-                      }}
-                    >
-                      {loc.name}
-                    </button>
-                  ))}
+      <main className="main">
+        <div className="sheet">
+          {locationError && !usingTestLocation && (
+            <>
+              <div className="error">{locationError}</div>
+              <button className="quiet-button" onClick={clearTestLocation}>
+                Try again
+              </button>
+              {IS_DEV && (
+                <div className="test-locations">
+                  <p>Test locations</p>
+                  <div className="test-location-buttons">
+                    {TEST_LOCATIONS.map((loc) => (
+                      <button
+                        key={loc.name}
+                        className="quiet-button"
+                        onClick={() => setTestLocation(loc.name, loc.location)}
+                      >
+                        {loc.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </>
+          )}
 
-        {error && (
-          <div className="error">{error}</div>
-        )}
+          {error && <div className="error">{error}</div>}
 
-        {warnings.length > 0 && (
-          <div className="warnings">
-            {warnings.map((w) => (
-              <div key={w} className="warning">⚠ {w}</div>
-            ))}
-          </div>
-        )}
+          {isLoading && (
+            <div className="pending" aria-label="Calculating routes">
+              <div className="pending-bar" />
+              <div className="pending-bar" />
+              <div className="pending-bar" />
+            </div>
+          )}
 
-        {isLoading && (
-          <div className="loading">
-            <div className="spinner" />
-            <p>Calculating routes...</p>
-          </div>
-        )}
+          {hasRoutes && (
+            <Recommendation allRoutes={routes} ferryBias={config.ferryPreferenceBias} />
+          )}
 
-        {!isLoading && !error && bestRoute && (
-          <Recommendation allRoutes={routes} ferryBias={config.ferryPreferenceBias} />
-        )}
+          {!isLoading && !error && !bestRoute && !locationError && !usingTestLocation && (
+            <p className="waiting">Finding you…</p>
+          )}
 
-        {!isLoading && !error && !bestRoute && !locationError && !usingTestLocation && (
-          <div className="waiting">
-            <p>Waiting for location...</p>
-          </div>
-        )}
+          {hasRoutes && warnings.length > 0 && (
+            <div className="warnings">
+              {warnings.map((w) => (
+                <div key={w} className="warning">{w}</div>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
 
       {IS_DEV && showLocationPicker && (
-        <div className="location-picker-overlay" onClick={() => setShowLocationPicker(false)}>
-          <div className="location-picker" onClick={(e) => e.stopPropagation()}>
-            <h3>Change Starting Point</h3>
+        <div className="picker-overlay" onClick={() => setShowLocationPicker(false)}>
+          <div className="picker" onClick={(e) => e.stopPropagation()}>
+            <p className="picker-title">Starting point</p>
             <button
-              className="location-option"
+              className={`picker-option ${!usingTestLocation ? 'is-active' : ''}`}
               onClick={() => {
                 clearTestLocation()
                 setShowLocationPicker(false)
               }}
             >
-              📍 Use GPS Location
+              GPS
             </button>
             {TEST_LOCATIONS.map((loc) => (
               <button
                 key={loc.name}
-                className={`location-option ${usingTestLocation === loc.name ? 'active' : ''}`}
+                className={`picker-option ${usingTestLocation === loc.name ? 'is-active' : ''}`}
                 onClick={() => {
                   setTestLocation(loc.name, loc.location)
                   setShowLocationPicker(false)
                 }}
               >
-                🧪 {loc.name}
+                {loc.name}
               </button>
             ))}
           </div>
@@ -277,64 +293,116 @@ function App() {
 
       {currentLocation && (
         <footer className="footer">
-          <div className="footer-slider">
-            <span className="slider-icon">🚗</span>
+          <div className="bias">
+            <CarIcon size={14} />
             <input
               type="range"
               min="0"
               max="30"
               step="5"
               value={config.ferryPreferenceBias}
+              aria-label={`Ferry preference, plus ${config.ferryPreferenceBias} minutes`}
               onChange={(e) => saveConfig({ ...config, ferryPreferenceBias: parseInt(e.target.value, 10) })}
             />
-            <span className="slider-icon">⛴️</span>
-            <span className="slider-value">
-              {config.ferryPreferenceBias > 0 ? `+${config.ferryPreferenceBias}` : '0'}
-            </span>
+            <FerryIcon size={14} />
           </div>
-          <div className="footer-buttons">
-            <button className="refresh-button" onClick={refresh} disabled={isLoading}>
-              {isLoading ? '...' : 'Refresh'}
+          {hasRoutes && (
+            <button className="text-button" onClick={() => setShowDetails(true)}>
+              Details
             </button>
-            {IS_DEV && (
-              <button
-                className="location-button"
-                onClick={() => setShowLocationPicker(true)}
-              >
-                📍 {usingTestLocation || 'GPS'}
-              </button>
-            )}
-          </div>
+          )}
+          {IS_DEV && (
+            <button className="text-button" onClick={() => setShowLocationPicker(true)}>
+              {usingTestLocation || 'GPS'}
+            </button>
+          )}
+          <button className="text-button" onClick={refresh} disabled={isLoading}>
+            Refresh
+          </button>
         </footer>
       )}
     </div>
   )
 }
 
+interface Leg {
+  time: Date
+  what: string
+  duration: number | null
+  kind?: 'sail' | 'end'
+  note?: string
+  noteIsAlert?: boolean
+}
+
+// Break a route into the legs shown on the rail, in real time order
+function buildLegs(route: RouteOption, now: Date): Leg[] {
+  const legs: Leg[] = []
+  const at = (minutes: number) => new Date(now.getTime() + minutes * 60 * 1000)
+
+  if (route.type === 'drive-around') {
+    legs.push({ time: now, what: 'Drive via the Narrows', duration: route.totalTimeMinutes })
+    legs.push({ time: at(route.totalTimeMinutes), what: 'Home', duration: null, kind: 'end' })
+    return legs
+  }
+
+  const drive = route.driveToTerminalMinutes ?? 0
+  const wait = route.waitTimeMinutes ?? 0
+  const crossing = route.ferryTimeMinutes ?? 0
+  const fromTerminal = route.driveFromTerminalMinutes ?? 0
+
+  legs.push({
+    time: now,
+    what: `Drive to ${DEPARTS_FROM[route.name] ?? 'the terminal'}`,
+    duration: drive,
+  })
+
+  if (wait > 0) {
+    legs.push({ time: at(drive), what: 'Wait at terminal', duration: wait })
+  }
+
+  const spaces = route.spacesAvailable
+  legs.push({
+    time: route.nextDeparture ?? at(drive + wait),
+    what: `Sail to ${displayName(route)}`,
+    duration: crossing,
+    kind: 'sail',
+    note: spaces === null ? undefined : spaces > 0 ? `${spaces} spaces` : 'Boat is full',
+    noteIsAlert: spaces !== null && spaces < 10,
+  })
+
+  legs.push({ time: at(drive + wait + crossing), what: 'Drive home', duration: fromTerminal })
+  legs.push({ time: at(route.totalTimeMinutes), what: 'Home', duration: null, kind: 'end' })
+
+  return legs
+}
+
+function Rail({ route, now }: { route: RouteOption; now: Date }) {
+  return (
+    <ol className="rail">
+      {buildLegs(route, now).map((leg, i) => (
+        <li
+          key={i}
+          className={`leg ${leg.kind === 'sail' ? 'is-sail' : ''} ${leg.kind === 'end' ? 'is-end' : ''}`}
+          style={{ '--span': leg.duration ?? 0 } as React.CSSProperties}
+        >
+          <div className="leg-head">
+            <span className="leg-time">{formatClock(leg.time)}</span>
+            <span className="leg-what">{leg.what}</span>
+            {leg.duration !== null && (
+              <span className="leg-dur">{formatDuration(leg.duration)}</span>
+            )}
+          </div>
+          {leg.note && (
+            <div className={`leg-note ${leg.noteIsAlert ? 'is-alert' : ''}`}>{leg.note}</div>
+          )}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 function Recommendation({ allRoutes, ferryBias }: { allRoutes: RouteOption[]; ferryBias: number }) {
   const now = new Date()
-
-  const formatTime = (minutes: number) => {
-    if (minutes === Infinity) return '—'
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    if (hours > 0) {
-      return `${hours}h ${mins}m`
-    }
-    return `${mins}m`
-  }
-
-  const formatClockTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    })
-  }
-
-  const getArrivalTime = (minutes: number) => {
-    if (minutes === Infinity) return '—'
-    return formatClockTime(new Date(now.getTime() + minutes * 60 * 1000))
-  }
 
   // Apply ferry bias to determine effective winner
   const adjustedRoutes = allRoutes.map(r => ({
@@ -344,146 +412,98 @@ function Recommendation({ allRoutes, ferryBias }: { allRoutes: RouteOption[]; fe
       : r.totalTimeMinutes
   })).sort((a, b) => a.adjustedTime - b.adjustedTime)
 
-  const effectiveWinner = adjustedRoutes[0]
+  const winner = adjustedRoutes[0]
   const secondBest = adjustedRoutes[1]
 
-  // Check if it's a close call (within 15 minutes)
-  const timeDiff = secondBest ? Math.abs(effectiveWinner.adjustedTime - secondBest.adjustedTime) : Infinity
-  const isCloseCall = timeDiff <= 15 && secondBest
-
-  // Get trade-offs for display
-  const getTradeoffs = (r: RouteOption) => {
-    const pros: string[] = []
-    const cons: string[] = []
-
-    if (r.type === 'drive-around') {
-      pros.push('Predictable timing')
-      pros.push('No waiting')
-      cons.push('All driving, no break')
-      cons.push('Less scenic')
-    } else {
-      // Ferry route
-      pros.push('Scenic, can relax')
-      pros.push('Break from driving')
-
-      // Timing risk
-      if (r.risks.timingRisk === 'high') {
-        cons.push(`Tight timing (${r.waitTimeMinutes}min buffer)`)
-      } else if (r.risks.timingRisk === 'medium') {
-        cons.push(`Close timing (${r.waitTimeMinutes}min buffer)`)
-      }
-
-      // Space risk
-      if (r.risks.spaceRisk === 'high') {
-        cons.push(`Only ${r.spacesAvailable} spaces left`)
-      } else if (r.risks.spaceRisk === 'medium') {
-        cons.push(`${r.spacesAvailable} spaces available`)
-      }
-
-      if (r.risks.overall === 'low' && cons.length === 0) {
-        pros.push('Good buffer time')
-        pros.push('Plenty of space')
-      }
-    }
-
-    return { pros, cons }
-  }
+  const timeDiff = secondBest ? Math.abs(winner.adjustedTime - secondBest.adjustedTime) : Infinity
+  const isCloseCall = timeDiff <= 15 && !!secondBest && winner.totalTimeMinutes !== Infinity
 
   if (isCloseCall) {
     return (
-      <div className="recommendation close-call">
-        <div className="close-call-header">
-          <span className="close-call-icon">⚖️</span>
-          <h1 className="close-call-title">CLOSE CALL</h1>
-          <p className="close-call-subtitle">Within {Math.round(timeDiff)} min - your choice</p>
+      <div className="enter">
+        <div className="closecall-head">
+          <p className="verdict-eyebrow">Too close to call</p>
+          <h1 className="verdict-name">{Math.round(timeDiff)} minutes apart</h1>
+          <p className="closecall-note">Either works. Pick on the trade-offs.</p>
         </div>
 
-        <div className="close-call-options">
-          {adjustedRoutes.slice(0, 2).map((r) => {
-            const { pros, cons } = getTradeoffs(r)
-            const riskColor = r.risks.overall === 'high' ? 'var(--accent)'
-              : r.risks.overall === 'medium' ? '#f59e0b'
-              : 'var(--winner-color)'
-
-            return (
-              <div key={r.name} className="close-call-option">
-                <div className="option-header">
-                  <span className="option-icon">{r.type === 'drive-around' ? '🚗' : '⛴️'}</span>
-                  <span className="option-name">{r.name}</span>
-                  <span className="option-duration">{formatTime(r.totalTimeMinutes)}</span>
-                </div>
-                <div className="option-times">
-                  {r.type === 'ferry' && r.nextDeparture && (
-                    <div className="option-row">
-                      <span className="option-label">Sailing</span>
-                      <span className="option-value">{formatClockTime(r.nextDeparture)}</span>
-                    </div>
-                  )}
-                  <div className="option-row">
-                    <span className="option-label">Home</span>
-                    <span className="option-value">{getArrivalTime(r.totalTimeMinutes)}</span>
-                  </div>
-                </div>
-                <div className="option-risk" style={{ color: riskColor }}>
-                  {r.risks.overall === 'low' ? '✓ Low risk' : r.risks.overall === 'medium' ? '⚠ Some risk' : '⚠ Higher risk'}
-                </div>
-                <div className="option-tradeoffs">
-                  {pros.map((p, i) => (
-                    <div key={i} className="tradeoff pro">✓ {p}</div>
-                  ))}
-                  {cons.map((c, i) => (
-                    <div key={i} className="tradeoff con">⚠ {c}</div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+        <div>
+          {adjustedRoutes.slice(0, 2).map((r) => (
+            <Option key={r.name} route={r} now={now} />
+          ))}
         </div>
       </div>
     )
   }
 
-  // Clear winner
+  const arriveHome = winner.totalTimeMinutes === Infinity
+    ? null
+    : new Date(now.getTime() + winner.totalTimeMinutes * 60 * 1000)
+
   return (
-    <div className="recommendation">
-      <div className="winner clear-winner">
-        <div className="winner-header">
-          <span className="winner-icon">
-            {effectiveWinner.type === 'drive-around' ? '🚗' : '⛴️'}
-          </span>
-          <h1 className="winner-name">{effectiveWinner.name}</h1>
-          <span className="winner-duration">{formatTime(effectiveWinner.totalTimeMinutes)}</span>
-        </div>
-        <div className="winner-times">
-          {effectiveWinner.type === 'ferry' && effectiveWinner.nextDeparture && (
-            <div className="winner-row">
-              <span className="winner-label">Sailing</span>
-              <span className="winner-value">{formatClockTime(effectiveWinner.nextDeparture)}</span>
-            </div>
+    <div className="enter">
+      <div>
+        <p className="verdict-eyebrow">
+          {winner.type === 'drive-around' ? 'Skip the boat' : 'Take the'}
+        </p>
+        <h1 className="verdict-name">{displayName(winner)}</h1>
+        <div className="verdict-meta">
+          <span>{formatDuration(winner.totalTimeMinutes)}</span>
+          <span>·</span>
+          <span>home by {formatClock(arriveHome)}</span>
+          {winner.risks.overall === 'high' && (
+            <span className="verdict-flag is-alert">tight</span>
           )}
-          <div className="winner-row">
-            <span className="winner-label">Home</span>
-            <span className="winner-value">{getArrivalTime(effectiveWinner.totalTimeMinutes)}</span>
-          </div>
         </div>
-        {effectiveWinner.risks.overall !== 'low' && (
-          <p className="winner-risk" style={{ color: effectiveWinner.risks.overall === 'high' ? 'var(--accent)' : '#f59e0b' }}>
-            {effectiveWinner.risks.overall === 'high' ? '⚠ Higher risk' : '⚠ Some risk'}
-          </p>
-        )}
       </div>
 
-      <div className="comparison">
-        {allRoutes.map((r) => (
-          <div
-            key={r.name}
-            className={`route-summary ${r.name === effectiveWinner.name ? 'winner' : ''}`}
-          >
-            <span className="route-name">{r.name}</span>
-            <span className="route-time">{formatTime(r.totalTimeMinutes)}</span>
+      <Rail route={winner} now={now} />
+
+      <div className="alts">
+        {adjustedRoutes.slice(1).map((r) => (
+          <div key={r.name} className="alt">
+            <span className="alt-icon">
+              {r.type === 'drive-around' ? <CarIcon /> : <FerryIcon />}
+            </span>
+            <span className="alt-name">{displayName(r)}</span>
+            <span className="alt-delta">
+              {r.totalTimeMinutes === Infinity
+                ? 'no sailings'
+                : `+${Math.round(r.adjustedTime - winner.adjustedTime)}m`}
+            </span>
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function Option({ route, now }: { route: RouteOption; now: Date }) {
+  const arriveHome = route.totalTimeMinutes === Infinity
+    ? null
+    : new Date(now.getTime() + route.totalTimeMinutes * 60 * 1000)
+
+  const detail = route.type === 'drive-around'
+    ? `No waiting · home by ${formatClock(arriveHome)}`
+    : `Sails ${formatClock(route.nextDeparture)} · home by ${formatClock(arriveHome)}`
+
+  const caution = route.type === 'ferry' && route.risks.spaceRisk === 'high'
+    ? `Only ${route.spacesAvailable} spaces left`
+    : route.type === 'ferry' && route.risks.timingRisk === 'high'
+      ? `Tight — ${route.waitTimeMinutes}m to spare at the dock`
+      : null
+
+  return (
+    <div className="option">
+      <div className="option-head">
+        <span className="option-icon">
+          {route.type === 'drive-around' ? <CarIcon size={16} /> : <FerryIcon size={16} />}
+        </span>
+        <span className="option-name">{displayName(route)}</span>
+        <span className="option-total">{formatDuration(route.totalTimeMinutes)}</span>
+      </div>
+      <div className="option-line">{detail}</div>
+      {caution && <div className="option-line is-alert">{caution}</div>}
     </div>
   )
 }
