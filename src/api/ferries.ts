@@ -110,12 +110,19 @@ export async function getTerminalSailingSpace(
 export async function getVesselLocations(): Promise<VesselLocation[]> {
   const url = `/api/wsdot-vessels`
 
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch vessel locations: ${response.statusText}`)
+  let data: VesselLocationResponse[]
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      // Vessel positions only refine the schedule - don't fail without them
+      console.warn(`Vessel locations unavailable: ${response.status}`)
+      return []
+    }
+    data = await response.json()
+  } catch (err) {
+    console.warn('Failed to fetch vessel locations:', err)
+    return []
   }
-
-  const data: VesselLocationResponse[] = await response.json()
 
   if (!Array.isArray(data)) {
     console.warn('Vessel locations response is not an array:', data)

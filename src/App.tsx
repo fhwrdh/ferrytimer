@@ -6,7 +6,9 @@ import { Settings } from './components/Settings'
 import { RouteDetails } from './components/RouteDetails'
 import './App.css'
 
-// Test locations for development
+// Test locations - dev builds only, never shipped to production
+const IS_DEV = import.meta.env.DEV
+
 const TEST_LOCATIONS: { name: string; location: Location }[] = [
   { name: 'Lake City', location: { lat: 47.7194, lng: -122.2930 } },
   { name: 'SeaTac Airport', location: { lat: 47.4502, lng: -122.3088 } },
@@ -89,7 +91,7 @@ function App() {
       .catch(() => setFriendlyLocationName(null))
   }, [currentLocation, usingTestLocation])
 
-  const { routes, bestRoute, isLoading, error, refresh } = useRouteCalculation({
+  const { routes, bestRoute, isLoading, error, warnings, refresh } = useRouteCalculation({
     currentLocation,
     homeLocation: config.homeLocation,
   })
@@ -183,28 +185,47 @@ function App() {
         {locationError && !usingTestLocation && (
           <div className="location-error-container">
             <div className="error location-error">{locationError}</div>
-            <div className="test-locations">
-              <p>Use a test location:</p>
-              <div className="test-location-buttons">
-                {TEST_LOCATIONS.map((loc) => (
-                  <button
-                    key={loc.name}
-                    className="test-location-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setTestLocation(loc.name, loc.location)
-                    }}
-                  >
-                    {loc.name}
-                  </button>
-                ))}
+            <button
+              className="test-location-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                clearTestLocation()
+              }}
+            >
+              Retry location
+            </button>
+            {IS_DEV && (
+              <div className="test-locations">
+                <p>Use a test location:</p>
+                <div className="test-location-buttons">
+                  {TEST_LOCATIONS.map((loc) => (
+                    <button
+                      key={loc.name}
+                      className="test-location-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setTestLocation(loc.name, loc.location)
+                      }}
+                    >
+                      {loc.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {error && (
           <div className="error">{error}</div>
+        )}
+
+        {warnings.length > 0 && (
+          <div className="warnings">
+            {warnings.map((w) => (
+              <div key={w} className="warning">⚠ {w}</div>
+            ))}
+          </div>
         )}
 
         {isLoading && (
@@ -225,7 +246,7 @@ function App() {
         )}
       </main>
 
-      {showLocationPicker && (
+      {IS_DEV && showLocationPicker && (
         <div className="location-picker-overlay" onClick={() => setShowLocationPicker(false)}>
           <div className="location-picker" onClick={(e) => e.stopPropagation()}>
             <h3>Change Starting Point</h3>
@@ -275,12 +296,14 @@ function App() {
             <button className="refresh-button" onClick={refresh} disabled={isLoading}>
               {isLoading ? '...' : 'Refresh'}
             </button>
-            <button
-              className="location-button"
-              onClick={() => setShowLocationPicker(true)}
-            >
-              📍 {usingTestLocation || 'GPS'}
-            </button>
+            {IS_DEV && (
+              <button
+                className="location-button"
+                onClick={() => setShowLocationPicker(true)}
+              >
+                📍 {usingTestLocation || 'GPS'}
+              </button>
+            )}
           </div>
         </footer>
       )}

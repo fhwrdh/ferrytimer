@@ -21,7 +21,18 @@ interface UseRouteCalculationResult {
   bestRoute: RouteOption | null
   isLoading: boolean
   error: string | null
+  warnings: string[]
   refresh: () => void
+}
+
+// A route is only dropped when data it can't be computed without is missing,
+// so one flaky upstream service doesn't take out the whole comparison.
+function fulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
+  return result.status === 'fulfilled'
+}
+
+function valueOr<T>(result: PromiseSettledResult<T>, fallback: T): T {
+  return fulfilled(result) ? result.value : fallback
 }
 
 // Poulsbo area - for drive-around routing via Tacoma
@@ -42,26 +53,31 @@ export function useRouteCalculation({
   const [routes, setRoutes] = useState<RouteOption[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
 
   const calculate = useCallback(async () => {
     if (!currentLocation || !homeLocation) {
       setRoutes([]) // Clear stale results when location is cleared
+      setWarnings([])
       return
     }
 
     // Check if already at home
     if (isNearby(currentLocation, homeLocation)) {
       setRoutes([])
+      setWarnings([])
       setError('You\'re already home! 🏠')
       return
     }
 
     setIsLoading(true)
     setError(null)
+    setWarnings([])
 
     try {
       const now = new Date()
       const results: RouteOption[] = []
+      const problems: string[] = []
 
       // Calculate all routes in parallel
       const [
@@ -81,7 +97,7 @@ export function useRouteCalculation({
         edmondsSchedule,
         // Real-time vessel locations
         vesselLocations,
-      ] = await Promise.all([
+      ] = await Promise.allSettled([
         getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.SEATTLE]),
         getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.EDMONDS]),
         getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE], homeLocation),
@@ -95,53 +111,73 @@ export function useRouteCalculation({
         getVesselLocations(),
       ])
 
+      // Vessel positions and sailing space are refinements - degrade to empty
+      const vessels = valueOr(vesselLocations, [])
+
       // Drive around option - always low risk (predictable, no waiting)
-      const driveAroundTotal = driveAroundToTacoma + driveAroundFromTacoma
-      results.push({
-        name: 'DRIVE AROUND',
-        type: 'drive-around',
-        totalTimeMinutes: driveAroundTotal,
-        driveToTerminalMinutes: null,
-        waitTimeMinutes: null,
-        ferryTimeMinutes: null,
-        driveFromTerminalMinutes: driveAroundTotal,
-        nextDeparture: null,
-        spacesAvailable: null,
-        canMakeNextFerry: null,
-        missedSailings: [],
-        risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
-      })
+      if (fulfilled(driveAroundToTacoma) && fulfilled(driveAroundFromTacoma)) {
+        const driveAroundTotal = driveAroundToTacoma.value + driveAroundFromTacoma.value
+        results.push({
+          name: 'DRIVE AROUND',
+          type: 'drive-around',
+          totalTimeMinutes: driveAroundTotal,
+          driveToTerminalMinutes: null,
+          waitTimeMinutes: null,
+          ferryTimeMinutes: null,
+          driveFromTerminalMinutes: driveAroundTotal,
+          nextDeparture: null,
+          spacesAvailable: null,
+          canMakeNextFerry: null,
+          missedSailings: [],
+          risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
+        })
+      } else {
+        problems.push('Drive-around time unavailable')
+      }
 
       // Bainbridge option
-      const bainbridgeResult = calculateFerryRoute({
-        name: 'BAINBRIDGE',
-        now,
-        driveToTerminal: driveToSeattle,
-        driveFromTerminal: driveFromBainbridge,
-        crossingTime: CROSSING_TIMES.SEATTLE_BAINBRIDGE,
-        sailingSpaces: seattleSpaces,
-        schedule: seattleSchedule,
-        vesselLocations,
-      })
-      results.push(bainbridgeResult)
+      if (fulfilled(driveToSeattle) && fulfilled(driveFromBainbridge) && fulfilled(seattleSchedule)) {
+        results.push(calculateFerryRoute({
+          name: 'BAINBRIDGE',
+          now,
+          driveToTerminal: driveToSeattle.value,
+          driveFromTerminal: driveFromBainbridge.value,
+          crossingTime: CROSSING_TIMES.SEATTLE_BAINBRIDGE,
+          sailingSpaces: valueOr(seattleSpaces, []),
+          schedule: seattleSchedule.value,
+          vesselLocations: vessels,
+        }))
+      } else {
+        problems.push('Bainbridge route unavailable')
+      }
 
       // Kingston option
-      const kingstonResult = calculateFerryRoute({
-        name: 'KINGSTON',
-        now,
-        driveToTerminal: driveToEdmonds,
-        driveFromTerminal: driveFromKingston,
-        crossingTime: CROSSING_TIMES.EDMONDS_KINGSTON,
-        sailingSpaces: edmondsSpaces,
-        schedule: edmondsSchedule,
-        vesselLocations,
-      })
-      results.push(kingstonResult)
+      if (fulfilled(driveToEdmonds) && fulfilled(driveFromKingston) && fulfilled(edmondsSchedule)) {
+        results.push(calculateFerryRoute({
+          name: 'KINGSTON',
+          now,
+          driveToTerminal: driveToEdmonds.value,
+          driveFromTerminal: driveFromKingston.value,
+          crossingTime: CROSSING_TIMES.EDMONDS_KINGSTON,
+          sailingSpaces: valueOr(edmondsSpaces, []),
+          schedule: edmondsSchedule.value,
+          vesselLocations: vessels,
+        }))
+      } else {
+        problems.push('Kingston route unavailable')
+      }
+
+      if (results.length === 0) {
+        setRoutes([])
+        setError('Could not reach the routing services. Try again in a moment.')
+        return
+      }
 
       // Sort by total time
       results.sort((a, b) => a.totalTimeMinutes - b.totalTimeMinutes)
 
       setRoutes(results)
+      setWarnings(problems)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -160,6 +196,7 @@ export function useRouteCalculation({
     bestRoute,
     isLoading,
     error,
+    warnings,
     refresh: calculate,
   }
 }
