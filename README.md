@@ -75,8 +75,19 @@ Both keys are **server-side only**. The browser only ever talks to this app's ow
 Those endpoints spend real quota, so [`api/_guard.ts`](api/_guard.ts) restricts
 them to same-origin requests and rate limits per IP — 40/min for the billed
 Google endpoints, 90/min for the free WSDOT ones. It's a brake on casual abuse,
-not a precise global quota (each serverless instance counts separately); the
-hard ceiling is the budget cap on the Google key itself.
+not a precise global quota, since each serverless instance counts separately.
+
+The hard ceiling is set in Google Cloud instead, as per-API daily quotas:
+
+| API | Daily cap | Roughly |
+| --- | --- | --- |
+| Routes | 1,000 | ~160 recalculations (6 calls each) |
+| Geocoding | 500 | 1 call per location change |
+
+Both are under *IAM & Admin → Quotas*, filtered to "per day", and both are
+adjustable. Lowering applies immediately; raising needs Google's review. The key
+itself is also restricted to just these two APIs, so a leak can't reach anything
+else billable in the project.
 
 ## Setup
 
