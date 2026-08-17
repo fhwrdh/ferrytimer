@@ -11,7 +11,7 @@ import './App.css'
 const IS_DEV = import.meta.env.DEV
 
 const TEST_LOCATIONS: { name: string; location: Location }[] = [
-  { name: 'Lake City', location: { lat: 47.7194, lng: -122.2930 } },
+  { name: 'Northgate', location: { lat: 47.7063, lng: -122.3255 } },
   { name: 'SeaTac Airport', location: { lat: 47.4502, lng: -122.3088 } },
   { name: 'Downtown Seattle', location: { lat: 47.6062, lng: -122.3321 } },
   { name: 'University District', location: { lat: 47.6614, lng: -122.3131 } },

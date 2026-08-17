@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { allowRequest } from './_guard'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!allowRequest(req, res, 40)) return
+
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) {
     return res.status(500).json({ error: 'Google Maps API key not configured' })

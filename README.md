@@ -39,7 +39,7 @@ All of this lives in [`src/hooks/useRouteCalculation.ts`](src/hooks/useRouteCalc
 - **Risk scoring** on two axes, combined into an overall level:
   - *timing* — under 10 min of buffer is high, under 20 is medium
   - *space* — under 10 drive-up spaces left is high, under 30 is medium
-- **Ferry preference bias.** The 🚗↔⛴️ slider in the footer adds 0–30 minutes to
+- **Ferry preference bias.** The car-to-ferry slider in the footer adds 0–30 minutes to
   the drive-around option, so you can say how much extra driving you'd tolerate
   to take the boat instead. It biases the recommendation only — displayed times
   stay honest.
@@ -65,6 +65,12 @@ Upstream services fail sometimes, so no single one can blank the screen:
 Both keys are **server-side only**. The browser only ever talks to this app's own
 `/api/*` endpoints, which attach the keys and proxy upstream.
 
+Those endpoints spend real quota, so [`api/_guard.ts`](api/_guard.ts) restricts
+them to same-origin requests and rate limits per IP — 40/min for the billed
+Google endpoints, 90/min for the free WSDOT ones. It's a brake on casual abuse,
+not a precise global quota (each serverless instance counts separately); the
+hard ceiling is the budget cap on the Google key itself.
+
 ## Setup
 
 ```bash
@@ -82,8 +88,8 @@ with the Routes and Geocoding APIs enabled.
 | `npm run build` | `tsc` type-check then production build to `dist/` |
 | `npm run preview` | Serve the built bundle locally |
 
-In dev builds only, a 📍 button in the footer swaps your GPS position for a
-fixed test location (Lake City, SeaTac, Downtown, U District, Bellevue) so route
+In dev builds only, a button in the footer swaps your GPS position for a
+fixed test location (Northgate, SeaTac, Downtown, U District, Bellevue) so route
 logic can be exercised from a desk. That UI is compiled out of production
 builds.
 

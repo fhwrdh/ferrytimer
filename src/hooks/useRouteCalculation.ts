@@ -35,7 +35,7 @@ function valueOr<T>(result: PromiseSettledResult<T>, fallback: T): T {
   return fulfilled(result) ? result.value : fallback
 }
 
-// Poulsbo area - for drive-around routing via Tacoma
+// Drive-around routes south through the Tacoma Narrows Bridge
 const TACOMA_NARROWS_WAYPOINT: Location = { lat: 47.2690, lng: -122.5515 }
 
 // Check if two locations are very close (within ~500m)
@@ -66,7 +66,7 @@ export function useRouteCalculation({
     if (isNearby(currentLocation, homeLocation)) {
       setRoutes([])
       setWarnings([])
-      setError('You\'re already home! 🏠')
+      setError('You\'re already home.')
       return
     }
 

@@ -80,7 +80,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
             type="text"
             value={homeAddress}
             onChange={(e) => setHomeAddress(e.target.value)}
-            placeholder="123 Main St, Poulsbo, WA"
+            placeholder="Street, city, state"
           />
           <span className="hint">Where you're heading. Used for every drive estimate.</span>
         </div>
