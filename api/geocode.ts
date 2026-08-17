@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { allowRequest } from './_guard'
+import { allowRequest } from './_guard.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!allowRequest(req, res, 40)) return
