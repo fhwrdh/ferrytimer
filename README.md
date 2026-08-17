@@ -15,10 +15,17 @@ vessel positions.
 | `KINGSTON` | drive to Edmonds → ferry → drive home |
 | `DRIVE AROUND` | south around the sound via the Tacoma Narrows |
 
+<p>
+  <img src="docs/recommendation.png" width="300" alt="A clear winner: Kingston, 1h 28m, home by 11:40 AM, with a vertical rail listing each leg — drive to Edmonds, wait, sail, drive home — and the two alternatives below as time deltas.">
+  <img src="docs/close-call.png" width="300" alt="Too close to call: 15 minutes apart, showing Kingston and Bainbridge side by side with sailing times and a warning that only 8 spaces are left.">
+</p>
+
 The result is either a single **clear winner** — the route named large, with a
 journey rail below it whose segments are scaled to each leg's real duration — or
 **too close to call** when the top two land within 15 minutes, which drops the
 recommendation and lays out both options' trade-offs instead.
+
+(Both shots are rendered against fixture data, not a real trip.)
 
 Color is load-bearing rather than decorative: amber marks the recommendation and
 the sailing itself, red marks a genuine problem (tight timing, nearly full car
