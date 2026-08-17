@@ -126,3 +126,7 @@ src/
   components/      Settings (home address, bias), RouteDetails (leg breakdown)
   App.tsx          Recommendation and close-call rendering
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
