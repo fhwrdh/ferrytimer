@@ -47,6 +47,7 @@ function App() {
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
+  const [geoPermission, setGeoPermission] = useState<PermissionState | null>(null)
   const [usingTestLocation, setUsingTestLocation] = useState<string | null>(null)
   const [friendlyLocationName, setFriendlyLocationName] = useState<string | null>(null)
   const usingTestLocationRef = useRef<boolean>(false)
@@ -101,6 +102,23 @@ function App() {
     )
 
     return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
+  // Track geolocation permission so we know if a retry can even re-prompt
+  useEffect(() => {
+    if (!navigator.permissions?.query) return
+    let status: PermissionStatus | null = null
+    navigator.permissions
+      .query({ name: 'geolocation' as PermissionName })
+      .then((result) => {
+        status = result
+        setGeoPermission(result.state)
+        result.onchange = () => setGeoPermission(result.state)
+      })
+      .catch(() => {})
+    return () => {
+      if (status) status.onchange = null
+    }
   }, [])
 
   // Reverse geocode GPS location to get a friendly name
@@ -212,9 +230,17 @@ function App() {
           {locationError && !usingTestLocation && (
             <>
               <div className="error">{locationError}</div>
-              <button className="quiet-button" onClick={clearTestLocation}>
-                Try again
-              </button>
+              {geoPermission === 'denied' ? (
+                <p className="location-help">
+                  Location is blocked for this site. Click the location
+                  (or lock) icon in your browser's address bar, set Location
+                  to Allow, then reload the page.
+                </p>
+              ) : (
+                <button className="quiet-button" onClick={clearTestLocation}>
+                  Try again
+                </button>
+              )}
               {IS_DEV && (
                 <div className="test-locations">
                   <p>Test locations</p>
