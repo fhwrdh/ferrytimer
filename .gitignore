@@ -4,6 +4,9 @@ node_modules
 # Build output
 dist
 
+# Vercel local link + build cache
+.vercel
+
 # Environment files (contain API keys)
 .env.local
 .env.*.local
@@ -19,3 +22,6 @@ dist
 
 # Debug logs
 npm-debug.log*
+
+# Local agent config
+.claude

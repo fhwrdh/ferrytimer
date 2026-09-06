@@ -2,7 +2,7 @@
 
 Should I take the ferry, or drive around?
 
-**Live: <https://ferrytimer.vercel.app>**
+**Live: <https://ferry.fhwrdh.net>**
 
 A small React PWA that answers that one question for the trip home to the Kitsap
 Peninsula. It takes your current GPS position and your saved home address, then
@@ -113,13 +113,22 @@ builds.
 
 ## Deployment
 
-Deployed at <https://ferrytimer.vercel.app>, built from `main` on push and
-configured in [`vercel.json`](vercel.json). The two environments reach
-upstream by different mechanisms that must be kept in sync:
+Self-hosted at <https://ferry.fhwrdh.net> on a DigitalOcean droplet. The Vite
+build can't run on the droplet (too little RAM, arm64/amd64 esbuild), so deploy
+builds on the Mac and ships the artifacts:
 
-- **Production** — the serverless handlers in [`api/`](api/), one flat file per
-  endpoint, reading `WSDOT_API_KEY` and `GOOGLE_MAPS_API_KEY` from Vercel env
-  vars.
+```bash
+npm run deploy   # build + rsync dist/ and server/ to the droplet, pm2 reload
+```
+
+nginx serves the static `dist/` and reverse-proxies `/api/*` to a zero-dependency
+Node proxy ([`server/server.mjs`](server/server.mjs)) running under PM2 on
+`127.0.0.1:3458`. The two environments reach upstream by different mechanisms
+that must be kept in sync:
+
+- **Production** — `server/server.mjs`, one handler per endpoint, reading
+  `WSDOT_API_KEY` and `GOOGLE_MAPS_API_KEY` from `server/ferrytimer.env` on the
+  droplet (chmod 600, never committed).
 - **Development** — the `server.proxy` rules in
   [`vite.config.ts`](vite.config.ts), which build the same upstream URLs from
   `.env.local`.
@@ -129,7 +138,7 @@ Adding or changing an endpoint means changing it in both places.
 ## Layout
 
 ```
-api/               Vercel serverless proxies (one file per upstream endpoint)
+server/            Self-hosted Node api proxy (server.mjs) + PM2 config
 src/
   api/ferries.ts   WSDOT client — schedules, sailing space, vessel positions
   api/routes.ts    Google Routes + geocoding client
