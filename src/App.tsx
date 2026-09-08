@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import type { Location, RouteOption } from './types'
+import { useState, useEffect } from 'react'
+import type { Location, RouteOption, StartPoint } from './types'
 import { useRouteCalculation } from './hooks/useRouteCalculation'
 import { reverseGeocode } from './api/routes'
 import { Settings } from './components/Settings'
 import { RouteDetails } from './components/RouteDetails'
+import { StartPointPicker } from './components/StartPointPicker'
 import { CarIcon, FerryIcon, GearIcon } from './components/Icons'
 import './App.css'
 
@@ -25,7 +26,7 @@ const DEPARTS_FROM: Record<string, string> = {
 }
 
 function displayName(route: RouteOption) {
-  if (route.type === 'drive-around') return 'Drive around'
+  if (route.type === 'drive-around') return 'Drive home'
   return route.name.charAt(0) + route.name.slice(1).toLowerCase()
 }
 
@@ -45,12 +46,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
-  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [gpsLocation, setGpsLocation] = useState<Location | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [geoPermission, setGeoPermission] = useState<PermissionState | null>(null)
-  const [usingTestLocation, setUsingTestLocation] = useState<string | null>(null)
   const [friendlyLocationName, setFriendlyLocationName] = useState<string | null>(null)
-  const usingTestLocationRef = useRef<boolean>(false)
 
   // Load config from localStorage
   const [config, setConfig] = useState(() => {
@@ -61,14 +60,21 @@ function App() {
         homeAddress: parsed.homeAddress || '',
         homeLocation: parsed.homeLocation,
         ferryPreferenceBias: parsed.ferryPreferenceBias ?? 0,
+        startPoint: (parsed.startPoint ?? null) as StartPoint | null,
       }
     }
     return {
       homeAddress: '',
       homeLocation: null,
       ferryPreferenceBias: 0,
+      startPoint: null as StartPoint | null,
     }
   })
+
+  // A pinned start wins over GPS, which keeps updating quietly underneath so
+  // switching back to "Use my location" is instant.
+  const startPoint = config.startPoint
+  const currentLocation = startPoint ? startPoint.location : gpsLocation
 
   // Get current location
   useEffect(() => {
@@ -79,19 +85,13 @@ function App() {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        // Don't overwrite test location with GPS
-        if (usingTestLocationRef.current) return
-
-        setCurrentLocation({
+        setGpsLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         })
         setLocationError(null)
       },
       (error) => {
-        // Don't show GPS errors when using test location
-        if (usingTestLocationRef.current) return
-
         setLocationError(error.message)
       },
       {
@@ -121,17 +121,18 @@ function App() {
     }
   }, [])
 
-  // Reverse geocode GPS location to get a friendly name
+  // Reverse geocode GPS location to get a friendly name. A pinned start
+  // already carries its own label.
   useEffect(() => {
-    if (!currentLocation || usingTestLocation) {
+    if (!gpsLocation || startPoint) {
       setFriendlyLocationName(null)
       return
     }
 
-    reverseGeocode(currentLocation)
+    reverseGeocode(gpsLocation)
       .then(name => setFriendlyLocationName(name))
       .catch(() => setFriendlyLocationName(null))
-  }, [currentLocation, usingTestLocation])
+  }, [gpsLocation, startPoint])
 
   const { routes, bestRoute, isLoading, error, warnings, refresh } = useRouteCalculation({
     currentLocation,
@@ -143,32 +144,22 @@ function App() {
     localStorage.setItem('ferrytimer-config', JSON.stringify(newConfig))
   }
 
-  const setTestLocation = (name: string, location: Location) => {
-    usingTestLocationRef.current = true
-    setCurrentLocation(location)
-    setUsingTestLocation(name)
-    setLocationError(null)
-  }
+  const pickStartPoint = (start: StartPoint | null) => {
+    saveConfig({ ...config, startPoint: start })
+    setShowLocationPicker(false)
 
-  const clearTestLocation = () => {
-    usingTestLocationRef.current = false
-    setCurrentLocation(null)
-    setUsingTestLocation(null)
-    setLocationError(null)
-
-    // Try to get fresh GPS position
-    if (navigator.geolocation) {
+    // Back to GPS: ask for a fresh fix rather than waiting on the watch
+    if (!start && navigator.geolocation) {
+      setLocationError(null)
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setCurrentLocation({
+          setGpsLocation({
             lat: position.coords.latitude,
             lng: position.coords.longitude,
           })
           setLocationError(null)
         },
-        (err) => {
-          setLocationError(err.message)
-        },
+        (err) => setLocationError(err.message),
         {
           enableHighAccuracy: true,
           timeout: 10000,
@@ -209,17 +200,20 @@ function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <div className="origin">
-          {currentLocation && (
-            <>
-              <span className="origin-label">From</span>
-              <span className="origin-value">
-                {usingTestLocation || friendlyLocationName ||
-                  `${currentLocation.lat.toFixed(3)}, ${currentLocation.lng.toFixed(3)}`}
-              </span>
-            </>
-          )}
-        </div>
+        <button
+          className="origin"
+          onClick={() => setShowLocationPicker(true)}
+          aria-label="Change starting point"
+        >
+          <span className="origin-label">From</span>
+          <span className="origin-value">
+            {startPoint?.label || friendlyLocationName ||
+              (currentLocation
+                ? `${currentLocation.lat.toFixed(3)}, ${currentLocation.lng.toFixed(3)}`
+                : 'Locating…')}
+          </span>
+          {startPoint && <span className="origin-pin">pinned</span>}
+        </button>
         <button className="icon-button" onClick={() => setShowSettings(true)} aria-label="Settings">
           <GearIcon />
         </button>
@@ -227,7 +221,7 @@ function App() {
 
       <main className="main">
         <div className="sheet">
-          {locationError && !usingTestLocation && (
+          {locationError && !startPoint && (
             <>
               <div className="error">{locationError}</div>
               {geoPermission === 'denied' ? (
@@ -237,26 +231,13 @@ function App() {
                   to Allow, then reload the page.
                 </p>
               ) : (
-                <button className="quiet-button" onClick={clearTestLocation}>
+                <button className="quiet-button" onClick={() => pickStartPoint(null)}>
                   Try again
                 </button>
               )}
-              {IS_DEV && (
-                <div className="test-locations">
-                  <p>Test locations</p>
-                  <div className="test-location-buttons">
-                    {TEST_LOCATIONS.map((loc) => (
-                      <button
-                        key={loc.name}
-                        className="quiet-button"
-                        onClick={() => setTestLocation(loc.name, loc.location)}
-                      >
-                        {loc.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <button className="quiet-button" onClick={() => setShowLocationPicker(true)}>
+                Enter a starting point
+              </button>
             </>
           )}
 
@@ -274,7 +255,7 @@ function App() {
             <Recommendation allRoutes={routes} ferryBias={config.ferryPreferenceBias} />
           )}
 
-          {!isLoading && !error && !bestRoute && !locationError && !usingTestLocation && (
+          {!isLoading && !error && !bestRoute && !locationError && (
             <p className="waiting">Finding you…</p>
           )}
 
@@ -288,33 +269,13 @@ function App() {
         </div>
       </main>
 
-      {IS_DEV && showLocationPicker && (
-        <div className="picker-overlay" onClick={() => setShowLocationPicker(false)}>
-          <div className="picker" onClick={(e) => e.stopPropagation()}>
-            <p className="picker-title">Starting point</p>
-            <button
-              className={`picker-option ${!usingTestLocation ? 'is-active' : ''}`}
-              onClick={() => {
-                clearTestLocation()
-                setShowLocationPicker(false)
-              }}
-            >
-              GPS
-            </button>
-            {TEST_LOCATIONS.map((loc) => (
-              <button
-                key={loc.name}
-                className={`picker-option ${usingTestLocation === loc.name ? 'is-active' : ''}`}
-                onClick={() => {
-                  setTestLocation(loc.name, loc.location)
-                  setShowLocationPicker(false)
-                }}
-              >
-                {loc.name}
-              </button>
-            ))}
-          </div>
-        </div>
+      {showLocationPicker && (
+        <StartPointPicker
+          startPoint={startPoint}
+          testLocations={IS_DEV ? TEST_LOCATIONS : []}
+          onPick={pickStartPoint}
+          onClose={() => setShowLocationPicker(false)}
+        />
       )}
 
       {currentLocation && (
@@ -335,11 +296,6 @@ function App() {
           {hasRoutes && (
             <button className="text-button" onClick={() => setShowDetails(true)}>
               Details
-            </button>
-          )}
-          {IS_DEV && (
-            <button className="text-button" onClick={() => setShowLocationPicker(true)}>
-              {usingTestLocation || 'GPS'}
             </button>
           )}
           <button className="text-button" onClick={refresh} disabled={isLoading}>
@@ -366,7 +322,7 @@ function buildLegs(route: RouteOption, now: Date): Leg[] {
   const at = (minutes: number) => new Date(now.getTime() + minutes * 60 * 1000)
 
   if (route.type === 'drive-around') {
-    legs.push({ time: now, what: 'Drive via the Narrows', duration: route.totalTimeMinutes })
+    legs.push({ time: now, what: 'Drive, no ferry', duration: route.totalTimeMinutes })
     legs.push({ time: at(route.totalTimeMinutes), what: 'Home', duration: null, kind: 'end' })
     return legs
   }

@@ -14,9 +14,16 @@ interface RouteResponse {
   }>
 }
 
+export interface DriveOptions {
+  // Keep the route on pavement. Google's driving directions happily route
+  // through a WSF sailing otherwise, which would double-count the boat.
+  avoidFerries?: boolean
+}
+
 export async function getDriveTime(
   origin: Location,
-  destination: Location
+  destination: Location,
+  options: DriveOptions = {}
 ): Promise<number> {
   const url = ROUTES_API_URL
 
@@ -40,6 +47,9 @@ export async function getDriveTime(
     travelMode: 'DRIVE',
     routingPreference: 'TRAFFIC_AWARE',
     computeAlternativeRoutes: false,
+    routeModifiers: {
+      avoidFerries: options.avoidFerries ?? false,
+    },
     languageCode: 'en-US',
     units: 'IMPERIAL',
   }
@@ -73,14 +83,36 @@ export async function getDriveTime(
 
 export async function getDriveTimeMinutes(
   origin: Location,
-  destination: Location
+  destination: Location,
+  options: DriveOptions = {}
 ): Promise<number> {
-  const seconds = await getDriveTime(origin, destination)
+  const seconds = await getDriveTime(origin, destination, options)
   return Math.ceil(seconds / 60)
 }
 
+export interface GeocodeResult {
+  location: Location
+  // The formatted address Google matched, for showing back to the user
+  formattedAddress: string
+  // True when the match is a city, zip, or county rather than a building.
+  // Those land on a centroid that can sit miles from the actual door.
+  isApproximate: boolean
+}
+
+// Result types that mean "somewhere in this area", not "this address"
+const AREA_LEVEL_TYPES = [
+  'locality',
+  'sublocality',
+  'neighborhood',
+  'postal_code',
+  'administrative_area_level_1',
+  'administrative_area_level_2',
+  'administrative_area_level_3',
+  'country',
+]
+
 // Get drive time from address string (uses geocoding)
-export async function geocodeAddress(address: string): Promise<Location> {
+export async function geocodeAddress(address: string): Promise<GeocodeResult> {
   const url = `${GEOCODE_API_URL}?address=${encodeURIComponent(address)}`
 
   const response = await fetch(url)
@@ -94,10 +126,19 @@ export async function geocodeAddress(address: string): Promise<Location> {
     throw new Error(`Could not geocode address: ${data.status}`)
   }
 
-  const location = data.results[0].geometry.location
+  const result = data.results[0]
+  const location = result.geometry.location
+  const types: string[] = result.types || []
+
   return {
-    lat: location.lat,
-    lng: location.lng,
+    location: {
+      lat: location.lat,
+      lng: location.lng,
+    },
+    formattedAddress: result.formatted_address ?? address,
+    isApproximate:
+      result.geometry.location_type === 'APPROXIMATE' ||
+      types.some((t) => AREA_LEVEL_TYPES.includes(t)),
   }
 }
 

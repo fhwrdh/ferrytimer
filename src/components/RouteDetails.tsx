@@ -9,8 +9,6 @@ const TERMINALS = {
   KINGSTON: { lat: 47.7967, lng: -122.4943 },
 }
 
-const TACOMA_NARROWS = { lat: 47.2690, lng: -122.5515 }
-
 interface RouteDetailsProps {
   routes: RouteOption[]
   currentLocation: Location
@@ -22,16 +20,15 @@ interface RouteDetailsProps {
 function buildGoogleMapsUrl(
   origin: Location,
   destination: Location,
-  waypoints?: Location[]
+  options: { avoidFerries?: boolean } = {}
 ): string {
   let url = `https://www.google.com/maps/dir/?api=1`
   url += `&origin=${origin.lat},${origin.lng}`
   url += `&destination=${destination.lat},${destination.lng}`
-  if (waypoints && waypoints.length > 0) {
-    const waypointStr = waypoints.map(w => `${w.lat},${w.lng}`).join('|')
-    url += `&waypoints=${waypointStr}`
-  }
   url += `&travelmode=driving`
+  if (options.avoidFerries) {
+    url += `&avoid=ferries`
+  }
   return url
 }
 
@@ -41,8 +38,9 @@ function getGoogleMapsUrl(
   currentLocation: Location,
   homeLocation: Location
 ): string {
+  // Let Maps pick the no-boat path the same way the estimate did
   if (routeType === 'drive-around') {
-    return buildGoogleMapsUrl(currentLocation, homeLocation, [TACOMA_NARROWS])
+    return buildGoogleMapsUrl(currentLocation, homeLocation, { avoidFerries: true })
   }
 
   // Ferry routes: drive to terminal, then from other terminal to home
@@ -58,7 +56,7 @@ function getGoogleMapsUrl(
 }
 
 function displayName(route: RouteOption) {
-  if (route.type === 'drive-around') return 'Drive around'
+  if (route.type === 'drive-around') return 'Drive home'
   return route.name.charAt(0) + route.name.slice(1).toLowerCase()
 }
 

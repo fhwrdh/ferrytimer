@@ -58,10 +58,17 @@ export interface RouteOption {
   risks: RouteRisks
 }
 
+// A manually pinned starting point. null means "use the device's location".
+export interface StartPoint {
+  label: string
+  location: Location
+}
+
 export interface Config {
   homeAddress: string
   homeLocation: Location | null
   ferryPreferenceBias: number // Minutes to add to drive-around (0 = neutral, 15 = prefer ferry)
+  startPoint: StartPoint | null
 }
 
 // Close call threshold in minutes

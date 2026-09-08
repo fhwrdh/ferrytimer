@@ -35,9 +35,6 @@ function valueOr<T>(result: PromiseSettledResult<T>, fallback: T): T {
   return fulfilled(result) ? result.value : fallback
 }
 
-// Drive-around routes south through the Tacoma Narrows Bridge
-const TACOMA_NARROWS_WAYPOINT: Location = { lat: 47.2690, lng: -122.5515 }
-
 // Check if two locations are very close (within ~500m)
 function isNearby(loc1: Location, loc2: Location): boolean {
   const latDiff = Math.abs(loc1.lat - loc2.lat)
@@ -87,9 +84,8 @@ export function useRouteCalculation({
         // Drive times from terminals to home
         driveFromBainbridge,
         driveFromKingston,
-        // Drive around (via Tacoma)
-        driveAroundToTacoma,
-        driveAroundFromTacoma,
+        // Straight home without boarding a boat
+        driveNoFerry,
         // Ferry schedules and spaces
         seattleSpaces,
         edmondsSpaces,
@@ -102,8 +98,7 @@ export function useRouteCalculation({
         getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.EDMONDS]),
         getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE], homeLocation),
         getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.KINGSTON], homeLocation),
-        getDriveTimeMinutes(currentLocation, TACOMA_NARROWS_WAYPOINT),
-        getDriveTimeMinutes(TACOMA_NARROWS_WAYPOINT, homeLocation),
+        getDriveTimeMinutes(currentLocation, homeLocation, { avoidFerries: true }),
         getTerminalSailingSpace(TERMINALS.SEATTLE),
         getTerminalSailingSpace(TERMINALS.EDMONDS),
         getScheduleToday(TERMINALS.SEATTLE, TERMINALS.BAINBRIDGE, true),
@@ -114,17 +109,19 @@ export function useRouteCalculation({
       // Vessel positions and sailing space are refinements - degrade to empty
       const vessels = valueOr(vesselLocations, [])
 
-      // Drive around option - always low risk (predictable, no waiting)
-      if (fulfilled(driveAroundToTacoma) && fulfilled(driveAroundFromTacoma)) {
-        const driveAroundTotal = driveAroundToTacoma.value + driveAroundFromTacoma.value
+      // Driving option - always low risk (predictable, no waiting). Google
+      // picks the real no-boat path from wherever you are: the Narrows loop
+      // from Seattle, a few minutes when you're already on the home side.
+      if (fulfilled(driveNoFerry)) {
+        const driveTotal = driveNoFerry.value
         results.push({
-          name: 'DRIVE AROUND',
+          name: 'DRIVE',
           type: 'drive-around',
-          totalTimeMinutes: driveAroundTotal,
+          totalTimeMinutes: driveTotal,
           driveToTerminalMinutes: null,
           waitTimeMinutes: null,
           ferryTimeMinutes: null,
-          driveFromTerminalMinutes: driveAroundTotal,
+          driveFromTerminalMinutes: driveTotal,
           nextDeparture: null,
           spacesAvailable: null,
           canMakeNextFerry: null,
@@ -132,7 +129,7 @@ export function useRouteCalculation({
           risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
         })
       } else {
-        problems.push('Drive-around time unavailable')
+        problems.push('Driving time unavailable')
       }
 
       // Bainbridge option

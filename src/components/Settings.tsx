@@ -15,6 +15,8 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
   const [ferryBias, setFerryBias] = useState(config.ferryPreferenceBias)
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A vague geocode is held here until the user presses Save a second time
+  const [vagueMatch, setVagueMatch] = useState<{ label: string; location: Location } | null>(null)
 
   const handleSave = async () => {
     setError(null)
@@ -31,10 +33,24 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
       let homeLocation: Location | null = config.homeLocation
 
       if (homeAddress !== config.homeAddress || !homeLocation) {
-        homeLocation = await geocodeAddress(homeAddress)
+        // Second press on an already-warned address: take it as is
+        if (vagueMatch) {
+          homeLocation = vagueMatch.location
+        } else {
+          const geocoded = await geocodeAddress(homeAddress)
+          homeLocation = geocoded.location
+
+          // A city or zip resolves to a centroid that can sit miles from the
+          // door, skewing every drive estimate. Warn before committing to it.
+          if (geocoded.isApproximate) {
+            setVagueMatch({ label: geocoded.formattedAddress, location: geocoded.location })
+            return
+          }
+        }
       }
 
       onSave({
+        ...config,
         homeAddress,
         homeLocation,
         ferryPreferenceBias: ferryBias,
@@ -73,13 +89,24 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
 
         {error && <div className="error">{error}</div>}
 
+        {vagueMatch && (
+          <div className="notice is-alert">
+            That matched <strong>{vagueMatch.label}</strong> — the center of the
+            whole area, which can be miles from your door. Add a street number
+            and street for accurate drive times, or save again to use it anyway.
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="homeAddress">Home</label>
           <input
             id="homeAddress"
             type="text"
             value={homeAddress}
-            onChange={(e) => setHomeAddress(e.target.value)}
+            onChange={(e) => {
+              setHomeAddress(e.target.value)
+              setVagueMatch(null)
+            }}
             placeholder="Street, city, state"
           />
           <span className="hint">Where you're heading. Used for every drive estimate.</span>
@@ -105,7 +132,7 @@ export function Settings({ config, onSave, onClose, isInitialSetup }: SettingsPr
         </div>
 
         <button className="primary-button" onClick={handleSave} disabled={!canSave}>
-          {isGeocoding ? 'Saving…' : 'Save'}
+          {isGeocoding ? 'Saving…' : vagueMatch ? 'Save anyway' : 'Save'}
         </button>
       </div>
     </div>

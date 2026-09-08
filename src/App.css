@@ -39,6 +39,24 @@
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.origin:hover .origin-value {
+  color: var(--signal);
+}
+
+.origin-pin {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--signal);
+  flex-shrink: 0;
 }
 
 .origin-label {
@@ -332,6 +350,11 @@
 .notice {
   border-left-color: var(--faint);
   color: var(--dim);
+}
+
+.notice.is-alert {
+  border-left-color: var(--alert);
+  color: var(--text);
 }
 
 .warnings {
@@ -657,7 +680,7 @@
   border-bottom-color: var(--dim);
 }
 
-/* ---------- dev-only location picker ---------- */
+/* ---------- starting point picker ---------- */
 
 .picker-overlay {
   position: fixed;
@@ -685,6 +708,40 @@
   text-transform: uppercase;
   color: var(--faint);
   margin-bottom: 12px;
+}
+
+.picker-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.picker-form input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 8px 0;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s var(--ease);
+}
+
+.picker-form input[type='text']::placeholder {
+  color: var(--faint);
+}
+
+.picker-form input[type='text']:focus {
+  border-bottom-color: var(--signal);
+}
+
+.picker-form .quiet-button {
+  flex-shrink: 0;
 }
 
 .picker-option {
@@ -723,24 +780,6 @@
 .quiet-button:hover {
   color: var(--text);
   border-color: var(--dim);
-}
-
-.test-locations {
-  margin-top: 26px;
-}
-
-.test-locations p {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 10px;
-}
-
-.test-location-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
 }
 
 /* ---------- motion ---------- */
