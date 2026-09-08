@@ -7,11 +7,15 @@ const GEOCODE_API_URL = '/api/geocode'
 interface RouteResponse {
   routes: Array<{
     duration: string // e.g., "1234s"
-    distanceMeters: number
-    polyline: {
-      encodedPolyline: string
-    }
+    // Google's summary of the roads taken, e.g. "I-5 S and WA-16 W"
+    description?: string
   }>
+}
+
+export interface DriveRoute {
+  seconds: number
+  // null when Google didn't summarize the roads for this route
+  summary: string | null
 }
 
 export interface DriveOptions {
@@ -20,11 +24,11 @@ export interface DriveOptions {
   avoidFerries?: boolean
 }
 
-export async function getDriveTime(
+export async function getDriveRoute(
   origin: Location,
   destination: Location,
   options: DriveOptions = {}
-): Promise<number> {
+): Promise<DriveRoute> {
   const url = ROUTES_API_URL
 
   const body = {
@@ -58,7 +62,7 @@ export async function getDriveTime(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-FieldMask': 'routes.duration',
+      'X-Goog-FieldMask': 'routes.duration,routes.description',
     },
     body: JSON.stringify(body),
   })
@@ -75,10 +79,10 @@ export async function getDriveTime(
   }
 
   // Duration is returned as "1234s" - parse to seconds
-  const durationStr = data.routes[0].duration
-  const seconds = parseInt(durationStr.replace('s', ''), 10)
+  const route = data.routes[0]
+  const seconds = parseInt(route.duration.replace('s', ''), 10)
 
-  return seconds
+  return { seconds, summary: route.description ?? null }
 }
 
 export async function getDriveTimeMinutes(
@@ -86,8 +90,17 @@ export async function getDriveTimeMinutes(
   destination: Location,
   options: DriveOptions = {}
 ): Promise<number> {
-  const seconds = await getDriveTime(origin, destination, options)
+  const { seconds } = await getDriveRoute(origin, destination, options)
   return Math.ceil(seconds / 60)
+}
+
+export async function getDriveMinutesAndSummary(
+  origin: Location,
+  destination: Location,
+  options: DriveOptions = {}
+): Promise<{ minutes: number; summary: string | null }> {
+  const { seconds, summary } = await getDriveRoute(origin, destination, options)
+  return { minutes: Math.ceil(seconds / 60), summary }
 }
 
 export interface GeocodeResult {

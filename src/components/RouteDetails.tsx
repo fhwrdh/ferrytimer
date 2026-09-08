@@ -1,12 +1,11 @@
 import type { Location, RouteOption } from '../types'
+import { TERMINALS, TERMINAL_LOCATIONS } from '../api/ferries'
 import { CarIcon, FerryIcon, CloseIcon } from './Icons'
 
-// Terminal locations for Google Maps links
-const TERMINALS = {
-  SEATTLE: { lat: 47.6023, lng: -122.3384 },
-  BAINBRIDGE: { lat: 47.6227, lng: -122.5109 },
-  EDMONDS: { lat: 47.8137, lng: -122.3835 },
-  KINGSTON: { lat: 47.7967, lng: -122.4943 },
+// Where each ferry route boards
+const DEPARTS_FROM: Record<string, Location> = {
+  BAINBRIDGE: TERMINAL_LOCATIONS[TERMINALS.SEATTLE],
+  KINGSTON: TERMINAL_LOCATIONS[TERMINALS.EDMONDS],
 }
 
 interface RouteDetailsProps {
@@ -17,42 +16,46 @@ interface RouteDetailsProps {
   onRefresh: () => void
 }
 
+function coord(location: Location): string {
+  return `${location.lat},${location.lng}`
+}
+
 function buildGoogleMapsUrl(
   origin: Location,
   destination: Location,
-  options: { avoidFerries?: boolean } = {}
+  options: { avoidFerries?: boolean; via?: Location } = {}
 ): string {
-  let url = `https://www.google.com/maps/dir/?api=1`
-  url += `&origin=${origin.lat},${origin.lng}`
-  url += `&destination=${destination.lat},${destination.lng}`
-  url += `&travelmode=driving`
-  if (options.avoidFerries) {
-    url += `&avoid=ferries`
+  const params = new URLSearchParams({
+    api: '1',
+    origin: coord(origin),
+    destination: coord(destination),
+    travelmode: 'driving',
+  })
+  if (options.via) {
+    params.set('waypoints', coord(options.via))
   }
-  return url
+  if (options.avoidFerries) {
+    params.set('avoid', 'ferries')
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
+// Every link covers the whole trip home, so Maps shows the same journey the
+// estimate describes rather than just its first leg.
 function getGoogleMapsUrl(
   routeName: string,
   routeType: 'ferry' | 'drive-around',
   currentLocation: Location,
   homeLocation: Location
 ): string {
-  // Let Maps pick the no-boat path the same way the estimate did
   if (routeType === 'drive-around') {
     return buildGoogleMapsUrl(currentLocation, homeLocation, { avoidFerries: true })
   }
 
-  // Ferry routes: drive to terminal, then from other terminal to home
-  // For now, just show drive to the departure terminal
-  if (routeName === 'BAINBRIDGE') {
-    return buildGoogleMapsUrl(currentLocation, TERMINALS.SEATTLE)
-  }
-  if (routeName === 'KINGSTON') {
-    return buildGoogleMapsUrl(currentLocation, TERMINALS.EDMONDS)
-  }
-
-  return buildGoogleMapsUrl(currentLocation, homeLocation)
+  // Route through the departure terminal so Maps picks this crossing and not
+  // whichever one it likes best
+  const departsFrom = DEPARTS_FROM[routeName]
+  return buildGoogleMapsUrl(currentLocation, homeLocation, { via: departsFrom })
 }
 
 function displayName(route: RouteOption) {
@@ -167,7 +170,7 @@ export function RouteDetails({ routes, currentLocation, homeLocation, onClose, o
               return (
                 <div className="detail-rows">
                   <div className="detail-row">
-                    <span>Via the Narrows Bridge</span>
+                    <span>{route.driveSummary ? `Via ${route.driveSummary}` : 'Straight through, no ferry'}</span>
                     <span>{formatClockTime(arriveHome)} · {formatTime(route.totalTimeMinutes)}</span>
                   </div>
                 </div>

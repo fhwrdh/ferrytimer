@@ -322,7 +322,11 @@ function buildLegs(route: RouteOption, now: Date): Leg[] {
   const at = (minutes: number) => new Date(now.getTime() + minutes * 60 * 1000)
 
   if (route.type === 'drive-around') {
-    legs.push({ time: now, what: 'Drive, no ferry', duration: route.totalTimeMinutes })
+    legs.push({
+      time: now,
+      what: route.driveSummary ? `Drive via ${route.driveSummary}` : 'Drive, no ferry',
+      duration: route.totalTimeMinutes,
+    })
     legs.push({ time: at(route.totalTimeMinutes), what: 'Home', duration: null, kind: 'end' })
     return legs
   }

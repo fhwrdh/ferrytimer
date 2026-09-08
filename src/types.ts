@@ -55,6 +55,8 @@ export interface RouteOption {
   spacesAvailable: number | null
   canMakeNextFerry: boolean | null
   missedSailings: Date[] // Sailings that depart before you can arrive
+  // Roads the driving leg takes, from Google, e.g. "I-5 S and WA-16 W"
+  driveSummary: string | null
   risks: RouteRisks
 }
 

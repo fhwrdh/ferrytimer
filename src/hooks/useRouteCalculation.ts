@@ -9,7 +9,7 @@ import {
   CROSSING_TIMES,
 } from '../api/ferries'
 import type { VesselLocation } from '../types'
-import { getDriveTimeMinutes } from '../api/routes'
+import { getDriveMinutesAndSummary, getDriveTimeMinutes } from '../api/routes'
 
 interface UseRouteCalculationProps {
   currentLocation: Location | null
@@ -98,7 +98,7 @@ export function useRouteCalculation({
         getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.EDMONDS]),
         getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE], homeLocation),
         getDriveTimeMinutes(TERMINAL_LOCATIONS[TERMINALS.KINGSTON], homeLocation),
-        getDriveTimeMinutes(currentLocation, homeLocation, { avoidFerries: true }),
+        getDriveMinutesAndSummary(currentLocation, homeLocation, { avoidFerries: true }),
         getTerminalSailingSpace(TERMINALS.SEATTLE),
         getTerminalSailingSpace(TERMINALS.EDMONDS),
         getScheduleToday(TERMINALS.SEATTLE, TERMINALS.BAINBRIDGE, true),
@@ -113,7 +113,7 @@ export function useRouteCalculation({
       // picks the real no-boat path from wherever you are: the Narrows loop
       // from Seattle, a few minutes when you're already on the home side.
       if (fulfilled(driveNoFerry)) {
-        const driveTotal = driveNoFerry.value
+        const driveTotal = driveNoFerry.value.minutes
         results.push({
           name: 'DRIVE',
           type: 'drive-around',
@@ -126,6 +126,7 @@ export function useRouteCalculation({
           spacesAvailable: null,
           canMakeNextFerry: null,
           missedSailings: [],
+          driveSummary: driveNoFerry.value.summary,
           risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
         })
       } else {
@@ -298,6 +299,7 @@ function calculateFerryRoute({
       spacesAvailable: null,
       canMakeNextFerry: false,
       missedSailings,
+      driveSummary: null,
       risks: { timingRisk: null, spaceRisk: null, overall: 'high' },
     }
   }
@@ -335,6 +337,7 @@ function calculateFerryRoute({
     spacesAvailable,
     canMakeNextFerry: canMakeIt,
     missedSailings,
+    driveSummary: null,
     risks: { timingRisk, spaceRisk, overall: overallRisk },
   }
 }
