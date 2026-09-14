@@ -169,21 +169,58 @@ scorecard shows counts next to every metric.
 
 ## 5. Evaluation
 
-`npm run eval` runs every scenario and prints a scorecard for v1, next to v0's
-baseline.
+`npm run eval` runs every handcrafted scenario, then scores **both** v0 and v1
+live on every sample that has an outcome, in the same run. v0 has no arrival
+time, so its arrival = `now + totalTimeMinutes`.
 
 | Set | Metrics | Gate |
 |---|---|---|
 | Handcrafted | exact winner, primary/fallback sailing, isCloseCall; arrival ±2 min | any failure → exit 1 |
-| Samples: tune | per-route mean absolute arrival error, mean signed error, p90; winner agreement with `observedBest` | reported in detail |
-| Samples: holdout | same metrics, totals only | mean absolute error worse than baseline by >2 min, or winner agreement lower than baseline → exit 1 |
+| Samples: tune | per-route v0 vs v1 mean absolute arrival error, mean signed error, p90 on paired rows, with coverage counts; ferry-overall; winner agreement; largest v1 misses | reported in detail |
+| Samples: holdout | ferry-overall v0 vs v1, winner agreement v0 vs v1, coverage counts; no sample ids | see gates → exit 1 |
 
-Split: samples assigned to tune/holdout by a deterministic hash of `sampleId`,
-80/20, stable across runs.
+**Split.** Tune/holdout by a deterministic FNV-1a hash of the sample's `now`
+(run time), 80/20, stable across runs. Records from the two origins in one
+sampler run share `now` and nearly all ferry inputs; hashing `sampleId` would
+put twins in different sets and leak the holdout.
 
-**Baseline.** `npm run eval:baseline` scores v0 on the same scenarios and writes
-`eval/baseline.json`. Only a human runs it. v0 has no arrival time, so its
-arrival = `now + totalTimeMinutes`.
+**Paired scoring.** A route's error counts only when its outcome resolved AND
+both v0 and v1 predicted an arrival, so neither side can improve MAE by
+declining to predict hard trips. Coverage per route reports `resolved`,
+`v0Predicted`, `v1Predicted` (predicted and resolved). Ferry-overall MAE pools
+Bainbridge and Kingston paired errors only. Winner agreement with
+`observedBest` counts only rows where all three routes resolved (a partially
+resolved row's "best" is biased toward whichever route resolved, usually
+DRIVE) and the algorithm named a winner.
+
+**Holdout gates** (v1 against live v0, ferry-only):
+1. v1 ferry paired MAE > v0 ferry paired MAE + 2 min → fail.
+2. v1 winner agreement rate < v0 rate → fail.
+3. For either ferry route, v1Predicted < v0Predicted → fail ("v1 predicts
+   fewer resolved trips than v0").
+A gate whose metrics are null does not fail; the scorecard prints
+`GATE SKIPPED: insufficient data (<gate>)`. DRIVE is never gated (see limits).
+
+**Run integrity checks** (each → exit 1): any v1 planning error; `git status`
+failing (protected files cannot be verified); the deep key set of `PARAMS` no
+longer matching `HANDCRAFTED_PARAMS` (a new parameter would otherwise run the
+guardrails with `undefined`).
+
+**Baseline record.** `npm run eval:baseline` writes `eval/baseline.json` with
+the paired tune and holdout metrics, `sampleCount`, and a SHA-256 of the sorted
+scored sample ids. It is a record for humans, not a gate input: the outcome set
+grows as samples resolve, so a frozen total would compare different rows.
+`npm run eval` notes when the scored set differs from the recorded hash.
+
+**Limits of the truth.**
+- DRIVE observed arrival is the sample's own live drive estimate, so DRIVE
+  error is always zero; it is excluded from gates.
+- The resolver picks the caught sailing with a fixed 10-minute boarding buffer,
+  so tuning `boardingBufferMinutes` away from 10 is not learnable from this
+  data.
+- When WSDOT has no arrival for a sailing, the resolver falls back to 35/30
+  minute crossings, the same as the default parameters.
+- A new `PARAMS` key needs a human to update `HANDCRAFTED_PARAMS`.
 
 ## 6. Agent loop (skill)
 
@@ -192,14 +229,22 @@ arrival = `now + totalTimeMinutes`.
 2. Form a hypothesis from systematic error (e.g. Kingston arrivals consistently
    late ⇒ loading time too low); state it before editing.
 3. Edit only `src/lib/routePlan.ts` (not v0, not eval code, not data).
-4. Run `npm test` and `npm run eval`; accept only if handcrafted passes and
-   holdout improves; otherwise revert.
-5. Never edit handcrafted `expect` blocks, `eval/data/`, or `baseline.json`.
+4. Run `npx tsc --noEmit`, `npm test` and `npm run eval`; keep a change only if
+   `RESULT: PASS`, all guardrails pass, holdout v1 ferry paired MAE or winner
+   agreement improves relative to live v0 without the other worsening, and
+   coverage does not drop; otherwise revert.
+5. Never edit any protected file or `eval/data/`.
+6. Respect the limits of the truth (§5): ignore DRIVE error, do not tune the
+   boarding buffer, and stop and ask before adding a parameter.
 
-`eval/run.ts` prints a loud warning when `git status` shows changes to
-handcrafted scenarios, `eval/baseline.json`, `src/lib/routePlan.v0.ts`, or
-`eval/score.ts`. `.gitignore` gains an exception so `.claude/skills/` is
-committed.
+`eval/run.ts` prints a loud warning when `git status` shows changes to any
+protected file: `eval/scenarios/handcrafted.ts`, `eval/baseline.json`,
+`eval/score.ts`, `eval/resolver.ts`, `src/lib/routePlan.v0.ts`,
+`src/lib/fixtures.ts`, `eval/run.ts`, `eval/resolve.ts`, `package.json`,
+`vitest.config.ts`, `src/api/ferries.ts`, `src/lib/planInputs.ts`. If
+`git status` itself fails the run fails. The skill's never-change list mirrors
+this list plus `eval/data/`. `.gitignore` gains an exception so
+`.claude/skills/` is committed.
 
 ## Error handling
 
