@@ -1,7 +1,7 @@
 // Cron entry point: node server/dist/sampler.mjs [--force]
 // --force ignores the sampling window (for a manual run), never the budget.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { inSamplingWindow, pacificClock } from './window'
 import { RoutesBudget, type BudgetStore } from './budget'
@@ -17,7 +17,12 @@ function requireEnv(name: string): string {
 function fileStore(path: string): BudgetStore {
   return {
     load: () => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null),
-    save: state => writeFileSync(path, JSON.stringify(state)),
+    // Write to a temp file and rename over the target so a process kill mid-write
+    // never leaves a truncated, unparseable budget file for the next cron run.
+    save: state => {
+      writeFileSync(`${path}.tmp`, JSON.stringify(state))
+      renameSync(`${path}.tmp`, path)
+    },
   }
 }
 
