@@ -264,7 +264,10 @@ reverted within the same session — or one that gets committed — still fails
 the run; `eval/baseline.json` is exempt and reported as a note. Without the
 tag the run falls back to the uncommitted-only check above and prints `NOTE:
 no eval-base tag`, which the skill must treat as a stop-and-ask signal before
-tuning.
+tuning. The tuning agent itself must never create, move, or delete the
+`eval-base` tag — only a human sets it, before the session starts, or the tag
+could be moved to a dirty HEAD to erase the protected-file check it exists to
+enforce.
 
 ## Error handling
 

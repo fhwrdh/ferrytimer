@@ -92,7 +92,7 @@ function checkProtectedFiles(): boolean {
   }
 
   if (!tagExists) {
-    console.log('NOTE: no eval-base tag. Before a tuning session a human runs: git tag -f eval-base')
+    console.log('NOTE: no eval-base tag. A human (not the tuning agent) tags the starting commit before a tuning session: git tag -f eval-base')
     return !warnOnProtectedChanges()
   }
 

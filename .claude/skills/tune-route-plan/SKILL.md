@@ -31,6 +31,9 @@ These mirror the protected list in `eval/run.ts`, plus the data:
 - `.claude/skills/tune-route-plan/SKILL.md` (this file)
 - anything in `eval/data/`
 
+Never create, move, or delete the `eval-base` git tag (`git tag`, `git tag
+-f`, `git tag -d`). Only a human sets it, before the session starts.
+
 If a guardrail fails, the algorithm is wrong, not the guardrail. If you believe
 a guardrail or the resolver itself is wrong, stop and tell the human why. Do
 not work around it.
