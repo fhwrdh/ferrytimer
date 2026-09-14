@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Location, RouteOption, SailingSpace } from '../types'
 import {
   getTerminalSailingSpace,
@@ -83,22 +83,35 @@ export function useRouteCalculation({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
+  // Each calculation takes a number; only the latest may set state, so a slow
+  // older calculation can't overwrite a newer one.
+  const latestRun = useRef(0)
+  // Where the last network calculation ran, so GPS jitter doesn't re-trigger it
+  const lastCalculated = useRef<{ location: Location; home: Location } | null>(null)
 
   const calculate = useCallback(async () => {
+    const run = ++latestRun.current
+    const isStale = () => run !== latestRun.current
+
     if (!currentLocation || !homeLocation) {
+      lastCalculated.current = null
       setRoutes([]) // Clear stale results when location is cleared
       setWarnings([])
+      setIsLoading(false)
       return
     }
 
     // Check if already at home
     if (isNearby(currentLocation, homeLocation)) {
+      lastCalculated.current = null
       setRoutes([])
       setWarnings([])
+      setIsLoading(false)
       setError('You\'re already home.')
       return
     }
 
+    lastCalculated.current = { location: currentLocation, home: homeLocation }
     setIsLoading(true)
     setError(null)
     setWarnings([])
@@ -130,6 +143,7 @@ export function useRouteCalculation({
         getScheduleToday(TERMINALS.EDMONDS, TERMINALS.KINGSTON, true),
         getVesselLocations(),
       ])
+      if (isStale()) return
 
       const inputs: PlanInputs = {
         now: now.toISOString(),
@@ -175,6 +189,7 @@ export function useRouteCalculation({
           getDriveTimeMinutes(arrivalTerminals[name], homeLocation, { departAt: new Date(departAt) })
         )
       )
+      if (isStale()) return
       timedLegs.forEach((leg, i) => {
         if (fulfilled(leg)) {
           const { name, departAt } = timedRequests[i]
@@ -193,13 +208,28 @@ export function useRouteCalculation({
       setRoutes(plan.routes)
       setWarnings(plan.warnings)
     } catch (err) {
+      if (isStale()) return
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
-      setIsLoading(false)
+      // A newer calculation owns the loading flag
+      if (!isStale()) setIsLoading(false)
     }
   }, [currentLocation, homeLocation])
 
+  // Auto-run on location changes, but skip when the position barely moved
+  // since the last calculation and home is the same. refresh always runs.
   useEffect(() => {
+    const last = lastCalculated.current
+    if (
+      currentLocation &&
+      homeLocation &&
+      last &&
+      last.home.lat === homeLocation.lat &&
+      last.home.lng === homeLocation.lng &&
+      isNearby(currentLocation, last.location)
+    ) {
+      return
+    }
     calculate()
   }, [calculate])
 
