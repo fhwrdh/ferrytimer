@@ -42,6 +42,29 @@ describe('parseVesselLocations', () => {
   it('returns an empty list when the response is not an array', () => {
     expect(parseVesselLocations({ Message: 'error' })).toEqual([])
   })
+
+  it('parses vessel context: terminals, scheduled departure and dock status', () => {
+    const [parsed] = parseVesselLocations([{
+      ...vessel,
+      DepartingTerminalID: 7,
+      ArrivingTerminalID: 3,
+      ScheduledDeparture: `/Date(${T1}-0700)/`,
+      AtDock: true,
+    }])
+    expect(parsed.departingTerminalId).toBe(7)
+    expect(parsed.arrivingTerminalId).toBe(3)
+    expect(parsed.scheduledDeparture?.getTime()).toBe(T1)
+    expect(parsed.leftDock?.getTime()).toBe(T1)
+    expect(parsed.atDock).toBe(true)
+  })
+
+  it('keeps missing vessel context fields as null', () => {
+    const [parsed] = parseVesselLocations([{ ...vessel, LeftDock: null }])
+    expect(parsed.departingTerminalId).toBeNull()
+    expect(parsed.arrivingTerminalId).toBeNull()
+    expect(parsed.scheduledDeparture).toBeNull()
+    expect(parsed.leftDock).toBeNull()
+  })
 })
 
 describe('parseScheduleToday', () => {

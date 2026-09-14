@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { runSample, maxRoutesCalls, ORIGINS, type Origin } from './runSample'
+import { runSample, maxRoutesCalls, SAMPLE_SCHEMA_VERSION, ORIGINS, type Origin } from './runSample'
 import { RoutesBudget, type BudgetState } from './budget'
 import type { DriveRequest, Upstream } from './upstream'
 import type { Location } from '../types'
@@ -39,7 +39,16 @@ function fakeUpstream(overrides: Partial<Upstream> = {}): Upstream & { driveCall
       return [{ departure: at(20), driveUpSpaceCount: 8, totalSpaces: 202 }]
     },
     async vessels() {
-      return [{ vesselName: 'Wenatchee', eta: at(12) }]
+      return [{
+        vesselName: 'Wenatchee',
+        eta: at(12),
+        departingTerminalId: TERMINALS.SEATTLE,
+        arrivingTerminalId: TERMINALS.BAINBRIDGE,
+        scheduledDeparture: at(5),
+        leftDock: null,
+        atDock: true,
+        inService: true,
+      }]
     },
     ...overrides,
   }
@@ -60,11 +69,23 @@ describe('runSample', () => {
       `northgate-${NOW.toISOString()}`,
     ])
     const [downtown, northgate] = result.records
+    expect(downtown.schemaVersion).toBe(SAMPLE_SCHEMA_VERSION)
+    expect(downtown.destination).toEqual(HOME)
+    expect(northgate.destination).toEqual(HOME)
     expect(downtown.inputs.now).toBe(NOW.toISOString())
     expect(downtown.inputs.drive).toEqual({ minutes: 110, summary: 'I-5 S and WA-16 W' })
     expect(downtown.inputs.ferries.BAINBRIDGE.driveToTerminalMinutes).toBe(10)
     expect(northgate.inputs.ferries.BAINBRIDGE.driveToTerminalMinutes).toBe(25)
-    expect(downtown.inputs.vessels).toEqual([{ vesselName: 'Wenatchee', eta: at(12) }])
+    expect(downtown.inputs.vessels).toEqual([{
+      vesselName: 'Wenatchee',
+      eta: at(12),
+      departingTerminalId: TERMINALS.SEATTLE,
+      arrivingTerminalId: TERMINALS.BAINBRIDGE,
+      scheduledDeparture: at(5),
+      leftDock: null,
+      atDock: true,
+      inService: true,
+    }])
     expect(downtown.inputs.ferries.BAINBRIDGE.spaces).toEqual(northgate.inputs.ferries.BAINBRIDGE.spaces)
   })
 
@@ -85,6 +106,26 @@ describe('runSample', () => {
     ])
     const timed = upstream.driveCalls.filter(c => c.request?.departAt)
     expect(timed.every(c => same(c.destination, HOME))).toBe(true)
+  })
+
+  it('prices arrival-less sailings at departure plus the route crossing time', async () => {
+    const upstream = fakeUpstream({
+      async schedule(departingId) {
+        return departingId === TERMINALS.SEATTLE
+          ? [5, 20, 60].map(o => ({ departure: at(o), arrival: null, vesselName: 'Wenatchee' }))
+          : [40, 80, 120].map(o => ({ departure: at(o), arrival: null, vesselName: 'Puyallup' }))
+      },
+    })
+    const result = await runSample({ upstream, home: HOME, now: NOW, budget: budget() })
+
+    // Bainbridge crossing is 35 min; candidates depart after +10: +20, +60
+    expect(result.records[0].inputs.ferries.BAINBRIDGE.homeLegs.map(l => l.departAt)).toEqual([
+      null, at(20 + 35), at(60 + 35),
+    ])
+    // Kingston crossing is 30 min; candidates depart after +30: +40, +80, +120
+    expect(result.records[1].inputs.ferries.KINGSTON.homeLegs.map(l => l.departAt)).toEqual([
+      null, at(40 + 30), at(80 + 30), at(120 + 30),
+    ])
   })
 
   it('counts every Routes call it makes and spends it from the budget', async () => {

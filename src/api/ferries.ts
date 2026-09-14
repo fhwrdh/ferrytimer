@@ -22,7 +22,8 @@ export const TERMINAL_LOCATIONS = {
   [TERMINALS.KINGSTON]: { lat: 47.7967, lng: -122.4943 },
 } as const
 
-// Ferry crossing times in minutes (approximate)
+// Ferry crossing times in minutes (approximate). Used to price the home leg
+// for sailings WSDOT gives no arrival time for.
 export const CROSSING_TIMES = {
   SEATTLE_BAINBRIDGE: 35,
   EDMONDS_KINGSTON: 30,
@@ -66,6 +67,10 @@ export interface VesselLocationResponse {
   LeftDock: string | null
   Eta: string | null
   EtaToScheduledDepartingTerminal: string | null
+  DepartingTerminalID: number | null
+  ArrivingTerminalID: number | null
+  ScheduledDeparture: string | null
+  AtDock: boolean
 }
 
 export function parseSailingSpace(
@@ -114,6 +119,11 @@ export function parseVesselLocations(data: unknown): VesselLocation[] {
     // new Date() on that string is Invalid Date, which silently disabled
     // the delay adjustment.
     eta: vessel.Eta ? parseWsdotDate(vessel.Eta) : null,
+    departingTerminalId: vessel.DepartingTerminalID ?? null,
+    arrivingTerminalId: vessel.ArrivingTerminalID ?? null,
+    scheduledDeparture: vessel.ScheduledDeparture ? parseWsdotDate(vessel.ScheduledDeparture) : null,
+    leftDock: vessel.LeftDock ? parseWsdotDate(vessel.LeftDock) : null,
+    atDock: vessel.AtDock ?? false,
   }))
 }
 

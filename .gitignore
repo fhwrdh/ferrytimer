@@ -26,5 +26,5 @@ npm-debug.log*
 # Local agent config
 .claude
 
-# Sampler data (contains home coordinates)
+# Sampler data (runtime output on the droplet)
 data/

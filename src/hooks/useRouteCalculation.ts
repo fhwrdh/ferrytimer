@@ -45,7 +45,9 @@ function toSailings(result: PromiseSettledResult<Schedule>): RecordedSailing[] |
   if (!fulfilled(result)) return null
   return result.value.map(s => ({
     departure: s.departureTime.toISOString(),
-    arrival: s.arrivalTime.toISOString(),
+    // getScheduleToday substitutes departure for a missing arrival; record
+    // null instead so consumers can price the crossing correctly.
+    arrival: s.arrivalTime.getTime() === s.departureTime.getTime() ? null : s.arrivalTime.toISOString(),
     vesselName: s.vesselName,
   }))
 }
@@ -134,6 +136,12 @@ export function useRouteCalculation({
         vessels: valueOr(vesselLocations, []).map(v => ({
           vesselName: v.vesselName,
           eta: v.eta ? v.eta.toISOString() : null,
+          departingTerminalId: v.departingTerminalId,
+          arrivingTerminalId: v.arrivingTerminalId,
+          scheduledDeparture: v.scheduledDeparture ? v.scheduledDeparture.toISOString() : null,
+          leftDock: v.leftDock ? v.leftDock.toISOString() : null,
+          atDock: v.atDock,
+          inService: v.inService,
         })),
         ferries: {
           BAINBRIDGE: {

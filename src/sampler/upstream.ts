@@ -38,8 +38,11 @@ export function makeUpstream(
   keys: { wsdot: string; google: string },
   fetchImpl: FetchLike = fetch
 ): Upstream {
+  // Guards against overlapping cron runs piling up on a stuck request.
+  const TIMEOUT_MS = 30_000
+
   async function getJson(label: string, url: string, init?: RequestInit): Promise<unknown> {
-    const response = await fetchImpl(url, init)
+    const response = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
     if (!response.ok) {
       throw new Error(`${label} failed: ${response.status} ${await response.text()}`)
     }
@@ -81,7 +84,9 @@ export function makeUpstream(
       const data = await getJson('WSDOT schedule', wsdot(`schedule/rest/scheduletoday/${departingId}/${arrivingId}/true`))
       return parseScheduleToday(data as Parameters<typeof parseScheduleToday>[0]).map(s => ({
         departure: s.departureTime.toISOString(),
-        arrival: s.arrivalTime.toISOString(),
+        // parseScheduleToday substitutes departure for a missing arrival;
+        // record null instead so consumers price the crossing correctly.
+        arrival: s.arrivalTime.getTime() === s.departureTime.getTime() ? null : s.arrivalTime.toISOString(),
         vesselName: s.vesselName,
       }))
     },
@@ -100,6 +105,12 @@ export function makeUpstream(
       return parseVesselLocations(data).map(v => ({
         vesselName: v.vesselName,
         eta: v.eta ? v.eta.toISOString() : null,
+        departingTerminalId: v.departingTerminalId,
+        arrivingTerminalId: v.arrivingTerminalId,
+        scheduledDeparture: v.scheduledDeparture ? v.scheduledDeparture.toISOString() : null,
+        leftDock: v.leftDock ? v.leftDock.toISOString() : null,
+        atDock: v.atDock,
+        inService: v.inService,
       }))
     },
   }

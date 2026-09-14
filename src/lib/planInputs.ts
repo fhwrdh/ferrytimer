@@ -6,7 +6,9 @@ export type FerryRouteName = 'BAINBRIDGE' | 'KINGSTON'
 
 export interface RecordedSailing {
   departure: string
-  arrival: string
+  // null when WSDOT gave no arrival time (scheduletoday's ArrivingTime is
+  // routinely null; see RecordedSailing consumers for how they price it).
+  arrival: string | null
   vesselName: string
 }
 
@@ -19,6 +21,12 @@ export interface RecordedSpace {
 export interface RecordedVessel {
   vesselName: string
   eta: string | null
+  departingTerminalId: number | null
+  arrivingTerminalId: number | null
+  scheduledDeparture: string | null
+  leftDock: string | null
+  atDock: boolean
+  inService: boolean
 }
 
 // Drive from the arrival terminal to home. departAt null means it was priced

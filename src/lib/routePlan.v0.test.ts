@@ -1,9 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { planRoutesV0 } from './routePlan.v0'
-import type { FerryInputs, PlanInputs } from './planInputs'
+import type { FerryInputs, PlanInputs, RecordedVessel } from './planInputs'
 
 const NOW = '2026-09-14T17:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
+
+function vessel(overrides: Partial<RecordedVessel> & { vesselName: string; eta: string | null }): RecordedVessel {
+  return {
+    departingTerminalId: null,
+    arrivingTerminalId: null,
+    scheduledDeparture: null,
+    leftDock: null,
+    atDock: false,
+    inService: true,
+    ...overrides,
+  }
+}
 
 function ferry(overrides: Partial<FerryInputs> = {}): FerryInputs {
   return {
@@ -92,14 +104,14 @@ describe('planRoutesV0', () => {
   })
 
   it('pushes departure to vessel ETA plus 15 minutes when later than scheduled', () => {
-    const plan = planRoutesV0(inputs({}, { vessels: [{ vesselName: 'WENATCHEE', eta: at(35) }] }))
+    const plan = planRoutesV0(inputs({}, { vessels: [vessel({ vesselName: 'WENATCHEE', eta: at(35) })] }))
     const bainbridge = byName(plan, 'BAINBRIDGE')
     expect(bainbridge.nextDeparture).toEqual(new Date(at(50)))
     expect(bainbridge.totalTimeMinutes).toBe(115)
   })
 
   it('ignores a vessel ETA that still makes the scheduled departure', () => {
-    const plan = planRoutesV0(inputs({}, { vessels: [{ vesselName: 'Wenatchee', eta: at(10) }] }))
+    const plan = planRoutesV0(inputs({}, { vessels: [vessel({ vesselName: 'Wenatchee', eta: at(10) })] }))
     expect(byName(plan, 'BAINBRIDGE').nextDeparture).toEqual(new Date(at(40)))
   })
 

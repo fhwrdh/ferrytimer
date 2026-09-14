@@ -71,6 +71,31 @@ describe('WSDOT', () => {
     }])
   })
 
+  it('records arrival as null when WSDOT gives no ArrivingTime', async () => {
+    const fetch = fakeFetch({
+      ScheduleID: 1,
+      TerminalCombos: [{
+        DepartingTerminalID: 7, DepartingTerminalName: 'Seattle', ArrivingTerminalID: 3, ArrivingTerminalName: 'Bainbridge Island',
+        Times: [{ DepartingTime: '/Date(1789407360000-0700)/', ArrivingTime: null, VesselID: 1, VesselName: 'Wenatchee' }],
+      }],
+    })
+    const result = await makeUpstream(keys, fetch).schedule(7, 3)
+    expect(result).toEqual([{
+      departure: new Date(1789407360000).toISOString(),
+      arrival: null,
+      vesselName: 'Wenatchee',
+    }])
+  })
+
+  it('passes a 30s timeout signal on every request', async () => {
+    const fetch = fakeFetch({
+      ScheduleID: 1,
+      TerminalCombos: [{ DepartingTerminalID: 7, DepartingTerminalName: 'Seattle', ArrivingTerminalID: 3, ArrivingTerminalName: 'Bainbridge Island', Times: [] }],
+    })
+    await makeUpstream(keys, fetch).schedule(7, 3)
+    expect(fetch.calls[0].init?.signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('records sailing space only for the arrival terminal', async () => {
     const fetch = fakeFetch({
       TerminalID: 7, TerminalName: 'Seattle',
@@ -90,7 +115,35 @@ describe('WSDOT', () => {
       LeftDock: null, Eta: '/Date(1789407360000-0700)/', EtaToScheduledDepartingTerminal: null,
     }])
     const result = await makeUpstream(keys, fetch).vessels()
-    expect(result).toEqual([{ vesselName: 'Yakima', eta: new Date(1789407360000).toISOString() }])
+    expect(result).toEqual([{
+      vesselName: 'Yakima',
+      eta: new Date(1789407360000).toISOString(),
+      departingTerminalId: null,
+      arrivingTerminalId: null,
+      scheduledDeparture: null,
+      leftDock: null,
+      atDock: false,
+      inService: true,
+    }])
+  })
+
+  it('records vessel context: terminals, scheduled departure and dock status', async () => {
+    const fetch = fakeFetch([{
+      VesselID: 1, VesselName: 'Yakima', Latitude: 0, Longitude: 0, Speed: 0, Heading: 0, InService: true,
+      LeftDock: '/Date(1789405000000-0700)/', Eta: null, EtaToScheduledDepartingTerminal: null,
+      DepartingTerminalID: 7, ArrivingTerminalID: 3, ScheduledDeparture: '/Date(1789406000000-0700)/', AtDock: false,
+    }])
+    const result = await makeUpstream(keys, fetch).vessels()
+    expect(result).toEqual([{
+      vesselName: 'Yakima',
+      eta: null,
+      departingTerminalId: 7,
+      arrivingTerminalId: 3,
+      scheduledDeparture: new Date(1789406000000).toISOString(),
+      leftDock: new Date(1789405000000).toISOString(),
+      atDock: false,
+      inService: true,
+    }])
   })
 
   it('throws on an HTTP error', async () => {

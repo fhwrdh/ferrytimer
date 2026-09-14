@@ -33,6 +33,11 @@ export interface VesselLocation {
   heading: number
   inService: boolean
   eta: Date | null
+  departingTerminalId: number | null
+  arrivingTerminalId: number | null
+  scheduledDeparture: Date | null
+  leftDock: Date | null
+  atDock: boolean
 }
 
 export type RiskLevel = 'low' | 'medium' | 'high'

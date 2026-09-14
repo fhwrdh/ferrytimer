@@ -1,6 +1,6 @@
 import type { Location } from '../types'
 import type { FerryInputs, FerryRouteName, HomeLeg, PlanInputs, RecordedSailing } from '../lib/planInputs'
-import { TERMINALS, TERMINAL_LOCATIONS } from '../api/ferries'
+import { CROSSING_TIMES, TERMINALS, TERMINAL_LOCATIONS } from '../api/ferries'
 import type { DriveRequest, DriveResult, Upstream } from './upstream'
 import type { RoutesBudget } from './budget'
 import { candidateSailings } from './candidates'
@@ -24,9 +24,15 @@ export function maxRoutesCalls(originCount: number): number {
   return originCount * 3 + 2 + 2 * CANDIDATES_PER_ROUTE
 }
 
+// Records written before this field existed have no schemaVersion and count
+// as 1.
+export const SAMPLE_SCHEMA_VERSION = 2
+
 export interface SampleRecord {
   sampleId: string
+  schemaVersion: number
   origin: Origin
+  destination: Location
   now: string
   inputs: PlanInputs
 }
@@ -41,10 +47,19 @@ const FERRY_ROUTES: Array<{
   name: FerryRouteName
   departing: keyof typeof TERMINAL_LOCATIONS
   arriving: keyof typeof TERMINAL_LOCATIONS
+  crossingMinutes: number
 }> = [
-  { name: 'BAINBRIDGE', departing: TERMINALS.SEATTLE, arriving: TERMINALS.BAINBRIDGE },
-  { name: 'KINGSTON', departing: TERMINALS.EDMONDS, arriving: TERMINALS.KINGSTON },
+  { name: 'BAINBRIDGE', departing: TERMINALS.SEATTLE, arriving: TERMINALS.BAINBRIDGE, crossingMinutes: CROSSING_TIMES.SEATTLE_BAINBRIDGE },
+  { name: 'KINGSTON', departing: TERMINALS.EDMONDS, arriving: TERMINALS.KINGSTON, crossingMinutes: CROSSING_TIMES.EDMONDS_KINGSTON },
 ]
+
+// A sailing's WSDOT arrival time is routinely null (ArrivingTime isn't
+// populated); price the timed home leg at departure plus the route's typical
+// crossing instead of the (~30-35 min too early) departure time itself.
+function homeLegDepartAt(sailing: RecordedSailing, crossingMinutes: number): string {
+  if (sailing.arrival) return sailing.arrival
+  return new Date(Date.parse(sailing.departure) + crossingMinutes * 60_000).toISOString()
+}
 
 function valueOr<T, F>(result: PromiseSettledResult<T>, fallback: F): T | F {
   return result.status === 'fulfilled' ? result.value : fallback
@@ -98,11 +113,12 @@ export async function runSample({
     if (schedule.status === 'fulfilled' && driveMinutes.length > 0) {
       const earliest = new Date(now.getTime() + Math.min(...driveMinutes) * 60_000)
       const picks: RecordedSailing[] = candidateSailings(schedule.value, earliest, CANDIDATES_PER_ROUTE)
+      const departAts = picks.map(s => homeLegDepartAt(s, route.crossingMinutes))
       const timed = await Promise.allSettled(
-        picks.map(s => drive(TERMINAL_LOCATIONS[route.arriving], home, { departAt: new Date(s.arrival) }))
+        departAts.map(departAt => drive(TERMINAL_LOCATIONS[route.arriving], home, { departAt: new Date(departAt) }))
       )
       timed.forEach((leg, i) => {
-        if (leg.status === 'fulfilled') homeLegs.push({ departAt: picks[i].arrival, minutes: leg.value.minutes })
+        if (leg.status === 'fulfilled') homeLegs.push({ departAt: departAts[i], minutes: leg.value.minutes })
       })
     }
 
@@ -127,7 +143,9 @@ export async function runSample({
 
     return {
       sampleId: `${origin.id}-${nowIso}`,
+      schemaVersion: SAMPLE_SCHEMA_VERSION,
       origin,
+      destination: home,
       now: nowIso,
       inputs: {
         now: nowIso,
