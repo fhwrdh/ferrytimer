@@ -27,6 +27,8 @@ These mirror the protected list in `eval/run.ts`, plus the data:
 - `src/lib/routePlan.v0.ts`, `src/lib/fixtures.ts`
 - `src/api/ferries.ts`, `src/lib/planInputs.ts`
 - `package.json`, `vitest.config.ts`
+- `tsconfig.json`, `src/sampler/runSample.ts`, `src/types.ts`
+- `.claude/skills/tune-route-plan/SKILL.md` (this file)
 - anything in `eval/data/`
 
 If a guardrail fails, the algorithm is wrong, not the guardrail. If you believe
@@ -34,6 +36,9 @@ a guardrail or the resolver itself is wrong, stop and tell the human why. Do
 not work around it.
 
 ## The loop
+
+Before you start, confirm `npm run eval` does not print `NOTE: no eval-base
+tag`. If it does, stop and ask the human to tag the starting commit.
 
 1. **Measure.** Run `npm run eval`. Read:
    - the tune set per-route v0 vs v1 MAE, **bias** (predicted − observed;
@@ -93,6 +98,9 @@ be learned from them:
 - Never add special cases keyed to specific times, dates, or sample IDs.
 - Never make v1 decline to predict a route to avoid an error; the coverage
   gate fails that.
+- Winner agreement counts a missing winner as wrong: on a fully resolved row,
+  naming no winner counts toward the denominator and never counts as
+  agreement, so declining to pick a winner cannot raise the rate.
 
 ## Report at the end
 

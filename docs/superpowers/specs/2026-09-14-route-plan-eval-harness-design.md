@@ -194,7 +194,9 @@ declining to predict hard trips. Coverage per route reports `resolved`,
 Bainbridge and Kingston paired errors only. Winner agreement with
 `observedBest` counts only rows where all three routes resolved (a partially
 resolved row's "best" is biased toward whichever route resolved, usually
-DRIVE) and the algorithm named a winner.
+DRIVE). The denominator is every such row, whether or not the algorithm named
+a winner: a null winner counts as a disagreement, so an algorithm cannot raise
+its rate by declining to pick.
 
 **Holdout gates** (v1 against live v0, ferry-only):
 1. v1 ferry paired MAE > v0 ferry paired MAE + 2 min → fail.
@@ -207,7 +209,12 @@ A gate whose metrics are null does not fail; the scorecard prints
 **Run integrity checks** (each → exit 1): any v1 planning error; `git status`
 failing (protected files cannot be verified); the deep key set of `PARAMS` no
 longer matching `HANDCRAFTED_PARAMS` (a new parameter would otherwise run the
-guardrails with `undefined`).
+guardrails with `undefined`); when the `eval-base` git tag exists, any
+protected file that differs from that tag (committed or not, `eval/baseline.json`
+excepted) — this pins the whole tuning session to one starting point instead of
+only catching changes still uncommitted at the moment `npm run eval` runs. When
+the tag is absent, the run falls back to the uncommitted-changes warning and
+prints a loud `NOTE: no eval-base tag` line instead of failing.
 
 **Baseline record.** `npm run eval:baseline` writes `eval/baseline.json` with
 the paired tune and holdout metrics, `sampleCount`, and a SHA-256 of the sorted
@@ -244,10 +251,20 @@ grows as samples resolve, so a frozen total would compare different rows.
 protected file: `eval/scenarios/handcrafted.ts`, `eval/baseline.json`,
 `eval/score.ts`, `eval/resolver.ts`, `src/lib/routePlan.v0.ts`,
 `src/lib/fixtures.ts`, `eval/run.ts`, `eval/resolve.ts`, `package.json`,
-`vitest.config.ts`, `src/api/ferries.ts`, `src/lib/planInputs.ts`. If
-`git status` itself fails the run fails. The skill's never-change list mirrors
-this list plus `eval/data/`. `.gitignore` gains an exception so
-`.claude/skills/` is committed.
+`vitest.config.ts`, `src/api/ferries.ts`, `src/lib/planInputs.ts`,
+`tsconfig.json`, `src/sampler/runSample.ts`, `src/types.ts`,
+`.claude/skills/tune-route-plan/SKILL.md`. If `git status` itself fails the
+run fails. The skill's never-change list mirrors this list plus `eval/data/`.
+`.gitignore` gains an exception so `.claude/skills/` is committed.
+
+When a human has run `git tag -f eval-base` before a tuning session, the run
+instead diffs each protected file against that tag (`git diff --name-only
+eval-base` plus untracked protected files) so a change made and later
+reverted within the same session — or one that gets committed — still fails
+the run; `eval/baseline.json` is exempt and reported as a note. Without the
+tag the run falls back to the uncommitted-only check above and prints `NOTE:
+no eval-base tag`, which the skill must treat as a stop-and-ask signal before
+tuning.
 
 ## Error handling
 

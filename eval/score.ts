@@ -252,10 +252,11 @@ export function scorePaired(rows: PairedRow[]): PairedMetrics {
     if (allResolved && row.outcome.observedBest) {
       fullyResolved++
       for (const key of ['v0', 'v1'] as const) {
-        const winner = row[key].winner
-        if (!winner) continue
+        // Every fully-resolved row counts toward the denominator, even when the
+        // algorithm names no winner: a null winner is a disagreement, not a
+        // skip, so an algorithm cannot raise its rate by declining to pick.
         winners[key].n++
-        if (winner === row.outcome.observedBest) winners[key].agree++
+        if (row[key].winner === row.outcome.observedBest) winners[key].agree++
       }
     }
   }
@@ -334,6 +335,19 @@ export function paramKeyDiff(a: object, b: object): string[] {
     ...[...keysA].filter(k => !keysB.has(k)).sort().map(k => `+${k}`),
     ...[...keysB].filter(k => !keysA.has(k)).sort().map(k => `-${k}`),
   ]
+}
+
+// Pure decision for eval/run.ts's protected-file gate: given the paths of
+// protected files that changed since the `eval-base` tag (committed or not),
+// decide what fails the run and what's merely a note. eval/baseline.json is
+// the one protected file a human is expected to regenerate after tagging, so
+// it never fails on its own.
+export function protectedChangeReport(paths: string[]): { failures: string[]; notes: string[] } {
+  const baseline = 'eval/baseline.json'
+  const offenders = paths.filter(p => p !== baseline)
+  const failures = offenders.length ? [`protected eval files changed since eval-base: ${offenders.join(', ')}`] : []
+  const notes = paths.includes(baseline) ? [`${baseline} changed since eval-base (allowed: a human regenerates it)`] : []
+  return { failures, notes }
 }
 
 export function scoredIdsHash(sampleIds: string[]): string {

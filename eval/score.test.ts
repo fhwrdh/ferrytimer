@@ -10,6 +10,7 @@ import {
   paramKeyDiff,
   predictionFromPlan,
   predictionFromV0,
+  protectedChangeReport,
   scoredIdsHash,
   scorePaired,
   scoreSet,
@@ -182,6 +183,29 @@ describe('scorePaired', () => {
     expect(m.winner.v1).toEqual({ n: 1, agree: 0, rate: 0 })
   })
 
+  it('counts a missing winner on a fully resolved row as a disagreement, not a skip', () => {
+    // Row 'a': v0 names the right winner; v1 names none at all (a null winner
+    // still counts toward v1's denominator and is wrong). Row 'd': both agree.
+    // n must be 2 for both algorithms since both rows are fully resolved,
+    // regardless of whether an algorithm named a winner.
+    const m = scorePaired([
+      {
+        outcome: outcome('a', { DRIVE: at(100), BAINBRIDGE: at(80), KINGSTON: at(90) }, 'BAINBRIDGE'),
+        v0: pred({ DRIVE: at(100), BAINBRIDGE: at(84), KINGSTON: at(90) }, 'BAINBRIDGE'),
+        v1: pred({ DRIVE: at(100), BAINBRIDGE: at(82), KINGSTON: at(92) }, null),
+      },
+      {
+        outcome: outcome('d', { DRIVE: at(100), BAINBRIDGE: at(80), KINGSTON: at(90) }, 'KINGSTON'),
+        v0: pred({ DRIVE: at(100), BAINBRIDGE: at(84), KINGSTON: at(90) }, 'KINGSTON'),
+        v1: pred({ DRIVE: at(100), BAINBRIDGE: at(82), KINGSTON: at(92) }, 'KINGSTON'),
+      },
+    ])
+    expect(m.winner.fullyResolved).toBe(2)
+    expect(m.winner.v0).toEqual({ n: 2, agree: 2, rate: 1 })
+    // v1: 1 agree ('d') out of 2 (the null winner on 'a' counts as wrong), so rate drops to 0.5
+    expect(m.winner.v1).toEqual({ n: 2, agree: 1, rate: 0.5 })
+  })
+
   it('returns null metrics and no winner rows for an empty set', () => {
     const m = scorePaired([])
     expect(m.ferryOverall.v1.meanAbsError).toBeNull()
@@ -251,6 +275,33 @@ describe('paramKeyDiff', () => {
       { a: 1, crossingMinutes: { BAINBRIDGE: 35, KINGSTON: 30, SOUTHWORTH: 40 } },
       { a: 1, b: 2, crossingMinutes: { BAINBRIDGE: 35, KINGSTON: 30 } },
     )).toEqual(['+crossingMinutes.SOUTHWORTH', '-b'])
+  })
+})
+
+describe('protectedChangeReport', () => {
+  it('returns no failures or notes for an empty change list', () => {
+    expect(protectedChangeReport([])).toEqual({ failures: [], notes: [] })
+  })
+
+  it('fails listing all changed protected paths', () => {
+    expect(protectedChangeReport(['eval/score.ts', 'eval/run.ts'])).toEqual({
+      failures: ['protected eval files changed since eval-base: eval/score.ts, eval/run.ts'],
+      notes: [],
+    })
+  })
+
+  it('treats eval/baseline.json alone as a note, not a failure', () => {
+    expect(protectedChangeReport(['eval/baseline.json'])).toEqual({
+      failures: [],
+      notes: ['eval/baseline.json changed since eval-base (allowed: a human regenerates it)'],
+    })
+  })
+
+  it('still fails on other paths when eval/baseline.json is also changed', () => {
+    expect(protectedChangeReport(['eval/baseline.json', 'src/types.ts'])).toEqual({
+      failures: ['protected eval files changed since eval-base: src/types.ts'],
+      notes: ['eval/baseline.json changed since eval-base (allowed: a human regenerates it)'],
+    })
   })
 })
 

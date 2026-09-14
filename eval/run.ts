@@ -14,6 +14,7 @@ import {
   paramKeyDiff,
   predictionFromPlan,
   predictionFromV0,
+  protectedChangeReport,
   ROUTE_NAMES,
   scoredIdsHash,
   scorePaired,
@@ -47,7 +48,13 @@ const PROTECTED = [
   'vitest.config.ts',
   'src/api/ferries.ts',
   'src/lib/planInputs.ts',
+  'tsconfig.json',
+  'src/sampler/runSample.ts',
+  'src/types.ts',
+  '.claude/skills/tune-route-plan/SKILL.md',
 ]
+
+const EVAL_BASE_TAG = 'refs/tags/eval-base'
 
 function readJsonl<T>(path: string): T[] {
   if (!existsSync(path)) return []
@@ -67,6 +74,39 @@ function warnOnProtectedChanges(): boolean {
   } catch {
     console.log('FAIL: could not verify protected files (git status failed)')
     return false
+  }
+}
+
+// Without a tag pinning the start of a tuning session, a tuning agent could
+// edit a protected file and then, in the same uncommitted working tree,
+// revert it before the last `npm run eval` — or the change simply never shows
+// as "uncommitted" once committed. Diffing against the `eval-base` tag (set by
+// a human right before a session) catches both committed and uncommitted
+// changes for the whole session. Returns true when the run should fail.
+function checkProtectedFiles(): boolean {
+  let tagExists = true
+  try {
+    execFileSync('git', ['rev-parse', '-q', '--verify', EVAL_BASE_TAG], { stdio: ['ignore', 'ignore', 'ignore'] })
+  } catch {
+    tagExists = false
+  }
+
+  if (!tagExists) {
+    console.log('NOTE: no eval-base tag. Before a tuning session a human runs: git tag -f eval-base')
+    return !warnOnProtectedChanges()
+  }
+
+  try {
+    const diffed = execFileSync('git', ['diff', '--name-only', 'eval-base', '--', ...PROTECTED], { encoding: 'utf8' })
+    const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '--', ...PROTECTED], { encoding: 'utf8' })
+    const changed = [...new Set([...diffed.split('\n'), ...untracked.split('\n')].map(p => p.trim()).filter(Boolean))]
+    const { failures, notes } = protectedChangeReport(changed)
+    for (const note of notes) console.log(`NOTE: ${note}`)
+    for (const failure of failures) console.log(`FAIL: ${failure}`)
+    return failures.length > 0
+  } catch {
+    console.log('FAIL: could not verify protected files (git diff against eval-base failed)')
+    return true
   }
 }
 
@@ -175,7 +215,7 @@ function writeBaseline() {
 
 function runEval() {
   let failed = false
-  if (!warnOnProtectedChanges()) failed = true
+  if (checkProtectedFiles()) failed = true
 
   const keyDiff = paramKeyDiff(PARAMS, HANDCRAFTED_PARAMS)
   if (keyDiff.length) {
