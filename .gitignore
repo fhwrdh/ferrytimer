@@ -24,7 +24,8 @@ dist
 npm-debug.log*
 
 # Local agent config
-.claude
+.claude/*
+!.claude/skills/
 
 # Sampler data (runtime output on the droplet)
 data/
