@@ -1,13 +1,13 @@
 # Route Plan Accuracy + Eval Harness — Design
 
 Date: 2026-09-14
-Status: Draft for review
+Status: Plan 1 shipped (sampler live); Plan 2 scope revised 2026-09-14 afternoon
 Context: demo for an interview session on AI-assisted development (2026-09-15)
 
 ## Goal
 
 Make the ferry-vs-drive recommendation more accurate with deterministic code,
-then build an eval harness that scores the algorithm against real and observed
+then build an eval harness that scores the algorithm against observed
 outcomes, so a coding agent can change the runtime algorithm and get an
 objective verdict.
 
@@ -22,6 +22,13 @@ guarded against overfitting and against gaming its own tests.
   keeps `now` a parameter so this can be added later.
 - No drive-time uncertainty bands, leave-later comparisons, or home-leg caching
   (items 4–7 from brainstorming). Candidates for later.
+- Cut 2026-09-14 for time: real-trip capture (trips endpoint, arrival card,
+  importer). A "what's next": recorded `PlanInputs` already replay the same way
+  a captured trip would.
+- Cut for now: UI for the fallback-sailing caution. The eval scores the plan,
+  not the screen.
+- Ad-hoc destinations (saved home plus easy alternatives, Google Maps style) are
+  a separate future feature. Nothing in `PlanInputs` assumes home.
 
 ## Decisions and trade-offs
 
@@ -29,42 +36,48 @@ guarded against overfitting and against gaming its own tests.
 |---|---|---|---|
 | AI placement | Dev loop (eval-driven agent) | Agent inside the app | Runtime answer must be repeatable, fast, free; agent value is in iterating on the algorithm with objective feedback |
 | Nearly-full sailing | Headline uses next boat; close-call judged on fallback | Always optimistic; always pessimistic | Matches in-the-field "go for it" behavior while staying honest about risk |
-| Home-leg pricing | Two-stage fetch, priced at real arrival time | Interpolate fixed times; cache | Correctness at cost of 2 extra Google calls; cache deferred |
-| Trip storage | Server JSONL + auto home detection + tap for route taken | localStorage export; manual-only logging | Real trips replay directly into eval as scenarios |
-| Ground truth for demo | Server sampler + resolver (proxy truth) plus real trips | Real trips only | Real trips alone yield ~2 data points by demo time; tuning on that is overfitting |
+| Home-leg pricing | Priced at the sailing's arrival time | Interpolate fixed times; cache | Correctness at cost of extra Google calls; cache deferred |
+| Ground truth for demo | Server sampler + local resolver (proxy truth) | Real trips only | Real trips alone yield ~1 data point by demo time; tuning on that is overfitting |
+| Sampler destination | Public place (Town & Country Market, Poulsbo) | User's home | Replayable and shareable data, nothing private on screen |
 | Overfit guard | Tune/holdout split + handcrafted guardrails | Single pooled score | A change counts only if holdout improves |
+| Sampling horizon | Today only (06:00–21:00 PDT, stopped after 21:05) | Continue into demo day | Keeps the full Google quota for the demo |
 
 ## 1. Components
 
+Shipped in Plan 1:
+
 ```
-src/lib/planInputs.ts     Inputs type: all upstream data a plan needs, JSON-serializable
-src/lib/routePlan.ts      Pure: selectSailings(stage1Inputs, now) -> home-leg requests
-                                planRoutes(inputs, now, bias) -> RoutePlan
-src/hooks/useRouteCalculation.ts
-                          Fetch only: stage 1, selectSailings, stage 2, planRoutes
-server/server.mjs         + POST /api/trips, PATCH /api/trips/:id
-server/sampler.mjs        Cron: runs stage 1+2 from fixed origins, appends samples
-server/resolver.mjs       Resolves due samples into observed outcomes
-eval/scenarios/handcrafted/*.json   committed, synthetic locations
-eval/scenarios/real/      gitignored: imported trips + resolved samples
-eval/run.ts               Scorecard, baseline comparison, exit code
-eval/import.ts            Pull trips.jsonl + samples from droplet into scenarios
-eval/baseline.json        Scores of the pre-change algorithm (human-updated only)
-.claude/skills/tune-route-plan/SKILL.md   Agent loop instructions
+src/api/ferries.ts            pure WSDOT parsers (ETA parse bug fixed)
+src/lib/planInputs.ts         JSON-serializable algorithm inputs
+src/lib/routePlan.v0.ts       pre-change algorithm, pure, frozen as baseline
+src/hooks/useRouteCalculation.ts   gathers PlanInputs, calls v0
+src/sampler/*                 cron sampler, bundled to server/dist/sampler.mjs
+server/run-sampler.sh         cron wrapper
 ```
 
-`planRoutes` runs in the browser, the server sampler, and the eval, from one
-source file. The server stays dependency-free: the deploy script bundles
-`src/lib/routePlan.ts` to `server/lib/routePlan.mjs` with esbuild (already
-installed via Vite). The browser fetchers in `src/api` call relative `/api`
-URLs, so the sampler has its own small upstream fetch module
-(`server/upstream.mjs`) with the same response parsing. The home location for
-the sampler comes from server env (`HOME_LAT`, `HOME_LNG`), never the repo.
+Plan 2:
 
-## 2. Algorithm rules
+```
+src/lib/routePlan.ts          v1 algorithm (rules below), pure, tuned by the agent
+eval/fetchSamples.ts          copy samples.jsonl from the droplet (scp)
+eval/resolve.ts               samples + WSDOT vesselhistory -> outcomes
+eval/scenarios/handcrafted/*.json   committed guardrail scenarios
+eval/score.ts                 pure scoring: plan vs outcome -> metrics
+eval/run.ts                   scorecard, baseline comparison, exit code
+eval/baseline.json            v0 scores (human-updated only)
+.claude/skills/tune-route-plan/SKILL.md   agent loop instructions
+```
 
-1. **Adjusted schedule.** If a vessel reports an ETA, departure = max(scheduled,
-   ETA + loading time). Arrival shifts by the same delay.
+Eval scripts run locally with `tsx` (dev dependency). The resolver runs
+locally, not on the droplet: WSDOT is free and the local `.env.local` key works.
+Resolved data lives in gitignored `eval/data/`.
+
+## 2. Algorithm rules (v1, `routePlan.ts`)
+
+1. **Adjusted schedule.** If a vessel reports an ETA **to the sailing's departing
+   terminal**, departure = max(scheduled, ETA + loading time). Vessel terminal
+   fields are recorded from schema version 2 on; when they're absent, fall back to
+   name-only matching like v0.
 2. **Primary sailing.** First adjusted sailing departing after
    `now + driveToTerminal + boardingBuffer`.
 3. **Space state** for the matched sailing:
@@ -72,115 +85,105 @@ the sampler comes from server env (`HOME_LAT`, `HOME_LNG`), never the repo.
    - `0` → full; roll forward and re-check; if none remain, route has no sailings
    - `1..nearlyFullThreshold-1` → nearly full; fallback = following sailing
    - otherwise → ok
-4. **Crossing time** = scheduled arrival − scheduled departure. `CROSSING_TIMES`
-   used only when WSDOT omits the arrival.
-5. **Home leg.** Priced by Google with `departureTime` = the sailing's adjusted
-   arrival, for primary and fallback. On failure, retry once without
-   `departureTime` and add a warning.
+4. **Crossing time** = `CROSSING_TIMES` for the route. WSDOT `scheduletoday`
+   never returns an arrival time (verified: 124/124 recorded sailings), so the
+   schedule cannot supply it.
+5. **Home leg** for a sailing starts at adjusted departure + crossing time. Its
+   duration is the recorded timed home leg whose `departAt` is nearest that
+   start, within `homeLegMatchMinutes`; otherwise the live (`departAt: null`)
+   leg, flagged in the route's warnings. The app would price it at that time;
+   replay uses the nearest recorded price.
 6. **Totals.** `primaryTotal` and `fallbackTotal`, each driveToTerminal + wait +
    crossing + driveHome for that sailing.
 7. **Winner and close call.** Headline time = `primaryTotal` (+ bias for
    drive-around). `decisionTime` = `fallbackTotal` if nearly full, else
    `primaryTotal` (+ bias for drive-around). Winner = lowest headline time.
-   Close call if the top-two gap by `decisionTime` ≤ 15 min, or if ranking by
-   `decisionTime` changes the winner.
+   Close call if the top-two gap by `decisionTime` ≤ `closeCallMinutes`, or if
+   ranking by `decisionTime` changes the winner.
 8. **Drive-around** unchanged: starts now, low risk.
 
 Tunable parameters, exported as one `PARAMS` object: `vesselLoadingMinutes`
 (15), `boardingBufferMinutes` (10), `nearlyFullThreshold` (10),
-`closeCallMinutes` (15).
+`closeCallMinutes` (15), `homeLegMatchMinutes` (20), and per-route crossing
+minutes (35 Bainbridge, 30 Kingston).
 
-Output: `RoutePlan { routes, winner, isCloseCall, closeCallGap, warnings }`.
-`RouteOption` adds `spaceState` and `fallback: { departure, totalMinutes } | null`.
-`App.tsx` only renders; close-call math moves out of it. Nearly-full caution
-reads e.g. "8 spaces left — else the 6:15, +45m".
+`planRoutes(inputs, params = PARAMS, bias = 0)` returns
+`RoutePlan { routes, winner, isCloseCall, closeCallGap, warnings }`. Each route
+carries `arrivalAt` (ISO), `spaceState`, the chosen sailing's departure, and
+`fallback: { departure, totalMinutes } | null`.
 
 ## 3. Trip capture
 
-**Client.** A trip starts at the first successful calculation away from home;
-`tripId` lives in localStorage and expires after 4 h. Each calculation POSTs
-`{ tripId, at, now, bias, inputs, plan }`. Opening the app near home with an
-open trip shows "Home. Took: Kingston / Bainbridge / Drive" with Dismiss; a tap
-PATCHes `{ arrivedAt: now, routeTaken }`. The first prediction of a trip is the
-one scored.
+Cut (see Non-goals).
 
-Known limitation: `arrivedAt` is when the app was opened at home, which can be
-later than real arrival. Dismiss discards bad trips.
+## 4. Sampler (shipped) and resolver
 
-**Server.** Append events to `trips.jsonl` in a data directory outside `dist/`.
-Same-origin guard, 10/min per IP, 256 KB body cap, refuse writes over 50 MB.
+Verified 2026-09-14:
+- Google Routes rejects a `departureTime` in the past; history cannot be re-queried.
+- WSDOT `vesselhistory/{Vessel}/{from}/{to}` returns `ScheduledDepart`,
+  `ActualDepart`, `EstArrival`, and is current to within about 30 minutes.
+- WSDOT `scheduletoday` omits `ArrivingTime`.
+- Routes daily cap is 1,000 calls for the whole GCP project, shared with the app.
 
-## 4. Sampler and resolver (proxy ground truth)
+**Sampler (live).** Cron every 20 min, sampler exits outside 06:00–21:00
+Pacific. Two origins (Downtown, Northgate) to Town & Country Market, Poulsbo.
+Each run appends one line per origin to `samples.jsonl`:
+`{ sampleId, schemaVersion, origin, destination, now, inputs }`.
+- Live legs: origin→Colman, origin→Edmonds, origin→destination avoiding ferries;
+  Bainbridge→destination, Kingston→destination.
+- WSDOT schedule, sailing space (filtered to the arrival terminal), vessel
+  locations with terminal context.
+- Timed home legs for 3 candidate sailings per route, priced at departure +
+  crossing time.
+- Budget 650 Routes calls per Pacific day; about 42 per hour.
 
-Verified 2026-09-14: Google Routes rejects a `departureTime` in the past, so
-history cannot be re-queried; WSDOT `vesselhistory/{Vessel}/{from}/{to}` returns
-`ScheduledDepart`, `ActualDepart`, and `EstArrival` (an estimate, not a recorded
-arrival); the Routes daily cap is 1,000 calls for the whole GCP project, shared
-with the live app.
+Records without `schemaVersion` (4 lines, before 18:34 UTC) priced timed legs
+at departure time; the eval excludes them.
 
-**Sampler.** Cron fires every 20 min; the sampler itself exits unless Pacific
-local time is 06:00–21:00 (the droplet runs UTC and Debian cron has no reliable
-`CRON_TZ`). Two fixed origins (Downtown, Northgate) to the home location in
-server env. Each run records, and appends one line per origin to
-`samples.jsonl` as `{ sampleId, origin, now, inputs }`:
-- Live Google legs (`departureTime` omitted): origin→Colman, origin→Edmonds,
-  origin→home avoiding ferries (per origin); Bainbridge→home, Kingston→home
-  (shared). These double as observations of "traffic now".
-- WSDOT schedule, sailing space, vessel locations (free).
-- Timed Google home legs for **candidate sailings**: for each ferry route, the
-  first 3 sailings departing after `now + shortest drive to that terminal`,
-  deduplicated across origins, priced at each sailing's scheduled arrival.
-  Recording a superset of what any algorithm would pick keeps replays from
-  going stale when the algorithm changes which sailing it picks.
+**Resolver (`eval/resolve.ts`).** No Google calls. For each sample with
+`schemaVersion >= 2` whose trips have finished, per route:
+- **Drive-around:** observed = the sample's own live drive-around minutes
+  (priced at `now`, which is when that trip starts).
+- **Ferry route:**
+  1. Terminal arrival = `now` + the sample's own live drive-to-terminal minutes.
+  2. Caught sailing = first sailing whose `ActualDepart` (vesselhistory, matched
+     by vessel name and scheduled departure) is after terminal arrival +
+     boarding buffer, skipping a sailing whose last sailing-space reading from
+     any sample taken before terminal arrival shows 0 drive-up spaces.
+  3. Crossing = `EstArrival − ActualDepart` for that sailing.
+  4. Home leg = the live terminal→destination minutes from the sample run
+     nearest the actual arrival (within 10 minutes).
+  5. Observed arrival = actual arrival + home leg.
+- A route is `unresolved` when any step lacks data (no vesselhistory row, no
+  nearby run). The scorecard counts unresolved routes.
+- Output: `eval/data/outcomes.jsonl`, one line per sample:
+  `{ sampleId, routes: { DRIVE, BAINBRIDGE, KINGSTON } }`, each
+  `{ arrivalAt, caughtSailing? } | { unresolved: reason }`, plus
+  `observedBest` (earliest resolved arrival). Labeled proxy truth.
 
-The sampler does not run `planRoutes`; plans are computed at eval time from the
-recorded inputs, for whichever algorithm version is being scored.
+A sample is resolvable once `now + 3 h` is at least 30 minutes in the past.
 
-Budget: 6 + 2 live + up to 6 timed ≈ 14 Routes calls per run × 45 runs ≈ 630
-per day, leaving ~370 for the app. A counter file enforces a hard stop at 650
-calls per Pacific day.
-
-**Resolver (Plan 2).** No Google calls. For a sample predicted at `now`:
-- Drive legs: the observed duration of a leg starting at time *t* is the live
-  duration recorded by the run nearest *t* (within 10 min); otherwise the
-  scenario is `unresolved`.
-- Ferry legs: `vesselhistory` gives the actual departure of the chosen sailing;
-  arrival = actual departure + (EstArrival − ActualDepart). Sold-out truth
-  comes from the last sailing-space reading before the predicted terminal
-  arrival.
-- Output: observed arrival per route, appended to `outcomes.jsonl`. Labeled
-  proxy truth in the scorecard.
-
-Expected volume by demo: 2 origins × ~25 runs (12:30–21:00 today) ≈ 50
-samples, plus the morning of 2026-09-15. Thin by design; the scorecard shows
-sample counts next to every metric.
+Expected volume: 2 origins × ~40 schema-2 runs ≈ 80 samples by 21:00; samples
+after about 18:30 resolve only after their trips finish. Thin by design; the
+scorecard shows counts next to every metric.
 
 ## 5. Evaluation
 
-`npm run eval` runs every scenario and prints a scorecard.
+`npm run eval` runs every scenario and prints a scorecard for v1, next to v0's
+baseline.
 
 | Set | Metrics | Gate |
 |---|---|---|
 | Handcrafted | exact winner, primary/fallback sailing, isCloseCall; arrival ±2 min | any failure → exit 1 |
-| Samples: tune | per-route mean absolute error, mean signed error, p90; winner agreement with observed-best route | reported in detail |
-| Samples: holdout | same metrics, totals only | mean absolute error worse than baseline by >2 min → exit 1 |
-| Real trips | error for route taken; agreement with route taken | reported; separate row |
+| Samples: tune | per-route mean absolute arrival error, mean signed error, p90; winner agreement with `observedBest` | reported in detail |
+| Samples: holdout | same metrics, totals only | mean absolute error worse than baseline by >2 min, or winner agreement lower than baseline → exit 1 |
 
 Split: samples assigned to tune/holdout by a deterministic hash of `sampleId`,
 80/20, stable across runs.
 
-**Stale inputs.** Replayed scenarios only contain home-leg prices for sailings
-the recording algorithm selected. If new code selects a sailing without a
-recorded price, the scenario is reported as `stale-inputs` and skipped with a
-count, never estimated.
-
-**Baseline.** `eval/baseline.json` is produced from the current algorithm
-before fixes 1–3 and updated only by a human via `npm run eval:baseline`. The
-extracted pre-fix algorithm is kept as `src/lib/routePlan.v0.ts` so the
-baseline can be regenerated on the same scenario set. Fed recorded inputs, v0
-uses the recorded home-leg price for its primary sailing; where v0 picks a
-sailing without one (a full boat it ignores), the scenario counts as
-`stale-inputs` for v0 too.
+**Baseline.** `npm run eval:baseline` scores v0 on the same scenarios and writes
+`eval/baseline.json`. Only a human runs it. v0 has no arrival time, so its
+arrival = `now + totalTimeMinutes`.
 
 ## 6. Agent loop (skill)
 
@@ -188,38 +191,36 @@ sailing without one (a full boat it ignores), the scenario counts as
 1. Run `npm run eval`; read the tune-set detail and holdout totals.
 2. Form a hypothesis from systematic error (e.g. Kingston arrivals consistently
    late ⇒ loading time too low); state it before editing.
-3. Edit only `src/lib/**`.
+3. Edit only `src/lib/routePlan.ts` (not v0, not eval code, not data).
 4. Run `npm test` and `npm run eval`; accept only if handcrafted passes and
    holdout improves; otherwise revert.
-5. Never edit scenario `expect` blocks, outcomes, or `baseline.json`.
+5. Never edit handcrafted `expect` blocks, `eval/data/`, or `baseline.json`.
 
-`eval/run.ts` warns loudly when git shows changes to scenarios, outcomes, or the
-baseline in the working tree.
+`eval/run.ts` prints a loud warning when `git status` shows changes to
+handcrafted scenarios, `eval/baseline.json`, `src/lib/routePlan.v0.ts`, or
+`eval/score.ts`. `.gitignore` gains an exception so `.claude/skills/` is
+committed.
 
 ## Error handling
 
-- Stage 1 failures behave as today: a route drops only when its required data
-  is missing; refinements (spaces, vessels) degrade to empty.
-- Stage 2 failures retry without `departureTime`, then warn.
-- Trip POST failures are silent to the user (logged to console); they never
-  block the recommendation.
-- Sampler/resolver failures log and skip the slot; no retries that burn quota.
+- Sampler failures log and skip the slot; no retries that burn quota.
+- Resolver: missing data marks a route `unresolved`, never guessed.
+- Eval: a scenario whose inputs fail to plan is counted as `error` with its
+  message; it does not crash the run.
 
 ## Testing
 
-- vitest added as a dev dependency.
-- `routePlan` built test-first: characterization tests of current behavior
-  first, then failing tests for rules 1–7.
-- Server endpoints: a small node test for body cap, size cap, and PATCH of an
-  unknown id.
+- vitest for `routePlan.ts` rules (test-first), `score.ts`, and resolver
+  matching logic on fixture data.
+- Eval end-to-end: `npm run eval` on handcrafted scenarios alone exits 0.
 
 ## Build order
 
-1. Verify `vesselhistory` responses and Google daily quota caps (gate).
-2. Extract `routePlan` with characterization tests; capture baseline; deploy
-   sampler (collect data as early as possible). Requires droplet deploy + cron
-   approval.
-3. Fixes 1–3 test-first; two-stage fetching in the hook; UI reads plan.
-4. Resolver, `eval/run.ts`, handcrafted scenarios, baseline.
-5. Trips endpoint, arrival card, importer.
-6. Tuning skill; rehearse the agent loop on collected data.
+Plan 1 (done): parsers and ETA fix, v0 extraction, sampler, deploy, cron.
+
+Plan 2:
+1. `routePlan.ts` v1, test-first.
+2. `score.ts` and handcrafted scenarios.
+3. `fetchSamples.ts` and `resolve.ts` with fixture tests.
+4. `run.ts`, baseline, npm scripts.
+5. Skill and `.gitignore` exception; rehearse the loop on real data.
