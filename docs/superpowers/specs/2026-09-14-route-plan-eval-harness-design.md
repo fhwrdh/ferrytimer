@@ -112,23 +112,48 @@ Same-origin guard, 10/min per IP, 256 KB body cap, refuse writes over 50 MB.
 
 ## 4. Sampler and resolver (proxy ground truth)
 
-**Sampler.** Every 15 min, from 4 fixed origins (Downtown, South Lake Union,
-Northgate, Bellevue) to the home location configured on the server: run stage
-1, `selectSailings`, stage 2, and `planRoutes`; append
-`{ sampleId, origin, now, inputs, plan }` to `samples.jsonl`. Calls upstream
-APIs directly with server keys, not through the public proxy.
+Verified 2026-09-14: Google Routes rejects a `departureTime` in the past, so
+history cannot be re-queried; WSDOT `vesselhistory/{Vessel}/{from}/{to}` returns
+`ScheduledDepart`, `ActualDepart`, and `EstArrival` (an estimate, not a recorded
+arrival); the Routes daily cap is 1,000 calls for the whole GCP project, shared
+with the live app.
 
-**Resolver.** For samples whose latest predicted arrival is in the past:
-- Ferry: WSDOT `vesselhistory` gives actual departure/arrival for the predicted
-  sailings. Later sailing-space readings from subsequent samples show whether a
-  sailing sold out before the predicted terminal arrival.
-- Drive legs: re-query Google at the time each leg would actually have started.
-  This is proxy truth, labeled as such in the scorecard.
-- Output: observed arrival for every route, appended to `outcomes.jsonl`.
+**Sampler.** Cron fires every 20 min; the sampler itself exits unless Pacific
+local time is 06:00–21:00 (the droplet runs UTC and Debian cron has no reliable
+`CRON_TZ`). Two fixed origins (Downtown, Northgate) to the home location in
+server env. Each run records, and appends one line per origin to
+`samples.jsonl` as `{ sampleId, origin, now, inputs }`:
+- Live Google legs (`departureTime` omitted): origin→Colman, origin→Edmonds,
+  origin→home avoiding ferries (per origin); Bainbridge→home, Kingston→home
+  (shared). These double as observations of "traffic now".
+- WSDOT schedule, sailing space, vessel locations (free).
+- Timed Google home legs for **candidate sailings**: for each ferry route, the
+  first 3 sailings departing after `now + shortest drive to that terminal`,
+  deduplicated across origins, priced at each sailing's scheduled arrival.
+  Recording a superset of what any algorithm would pick keeps replays from
+  going stale when the algorithm changes which sailing it picks.
 
-Expected volume by demo: ~4 origins × ~60 slots ≈ 240 resolved samples. Google
-usage ≈ 8 calls per sample plus resolver calls; confirm against the daily quota
-caps before enabling.
+The sampler does not run `planRoutes`; plans are computed at eval time from the
+recorded inputs, for whichever algorithm version is being scored.
+
+Budget: 6 + 2 live + up to 6 timed ≈ 14 Routes calls per run × 45 runs ≈ 630
+per day, leaving ~370 for the app. A counter file enforces a hard stop at 650
+calls per Pacific day.
+
+**Resolver (Plan 2).** No Google calls. For a sample predicted at `now`:
+- Drive legs: the observed duration of a leg starting at time *t* is the live
+  duration recorded by the run nearest *t* (within 10 min); otherwise the
+  scenario is `unresolved`.
+- Ferry legs: `vesselhistory` gives the actual departure of the chosen sailing;
+  arrival = actual departure + (EstArrival − ActualDepart). Sold-out truth
+  comes from the last sailing-space reading before the predicted terminal
+  arrival.
+- Output: observed arrival per route, appended to `outcomes.jsonl`. Labeled
+  proxy truth in the scorecard.
+
+Expected volume by demo: 2 origins × ~25 runs (12:30–21:00 today) ≈ 50
+samples, plus the morning of 2026-09-15. Thin by design; the scorecard shows
+sample counts next to every metric.
 
 ## 5. Evaluation
 
