@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Location, RouteOption, RiskLevel } from '../types'
+import type { Location, RouteOption, SailingSpace } from '../types'
 import {
   getTerminalSailingSpace,
   getScheduleToday,
   getVesselLocations,
   TERMINALS,
   TERMINAL_LOCATIONS,
-  CROSSING_TIMES,
 } from '../api/ferries'
-import type { VesselLocation } from '../types'
 import { getDriveMinutesAndSummary, getDriveTimeMinutes } from '../api/routes'
+import type { HomeLeg, PlanInputs, RecordedSailing, RecordedSpace } from '../lib/planInputs'
+import { planRoutesV0 } from '../lib/routePlan.v0'
 
 interface UseRouteCalculationProps {
   currentLocation: Location | null
@@ -25,6 +25,8 @@ interface UseRouteCalculationResult {
   refresh: () => void
 }
 
+type Schedule = Awaited<ReturnType<typeof getScheduleToday>>
+
 // A route is only dropped when data it can't be computed without is missing,
 // so one flaky upstream service doesn't take out the whole comparison.
 function fulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> {
@@ -33,6 +35,32 @@ function fulfilled<T>(result: PromiseSettledResult<T>): result is PromiseFulfill
 
 function valueOr<T>(result: PromiseSettledResult<T>, fallback: T): T {
   return fulfilled(result) ? result.value : fallback
+}
+
+function minutesOrNull(result: PromiseSettledResult<number>): number | null {
+  return fulfilled(result) ? result.value : null
+}
+
+function toSailings(result: PromiseSettledResult<Schedule>): RecordedSailing[] | null {
+  if (!fulfilled(result)) return null
+  return result.value.map(s => ({
+    departure: s.departureTime.toISOString(),
+    arrival: s.arrivalTime.toISOString(),
+    vesselName: s.vesselName,
+  }))
+}
+
+function toSpaces(result: PromiseSettledResult<SailingSpace[]>): RecordedSpace[] {
+  return valueOr(result, []).map(s => ({
+    departure: s.departureTime.toISOString(),
+    driveUpSpaceCount: s.driveUpSpaceCount,
+    totalSpaces: s.totalSpaces,
+  }))
+}
+
+// The app prices the drive home with live traffic, hence departAt null
+function liveHomeLeg(result: PromiseSettledResult<number>): HomeLeg[] {
+  return fulfilled(result) ? [{ departAt: null, minutes: result.value }] : []
 }
 
 // Check if two locations are very close (within ~500m)
@@ -73,25 +101,18 @@ export function useRouteCalculation({
 
     try {
       const now = new Date()
-      const results: RouteOption[] = []
-      const problems: string[] = []
 
-      // Calculate all routes in parallel
       const [
-        // Drive times to terminals
         driveToSeattle,
         driveToEdmonds,
-        // Drive times from terminals to home
         driveFromBainbridge,
         driveFromKingston,
         // Straight home without boarding a boat
         driveNoFerry,
-        // Ferry schedules and spaces
         seattleSpaces,
         edmondsSpaces,
         seattleSchedule,
         edmondsSchedule,
-        // Real-time vessel locations
         vesselLocations,
       ] = await Promise.allSettled([
         getDriveTimeMinutes(currentLocation, TERMINAL_LOCATIONS[TERMINALS.SEATTLE]),
@@ -106,76 +127,40 @@ export function useRouteCalculation({
         getVesselLocations(),
       ])
 
-      // Vessel positions and sailing space are refinements - degrade to empty
-      const vessels = valueOr(vesselLocations, [])
-
-      // Driving option - always low risk (predictable, no waiting). Google
-      // picks the real no-boat path from wherever you are: the Narrows loop
-      // from Seattle, a few minutes when you're already on the home side.
-      if (fulfilled(driveNoFerry)) {
-        const driveTotal = driveNoFerry.value.minutes
-        results.push({
-          name: 'DRIVE',
-          type: 'drive-around',
-          totalTimeMinutes: driveTotal,
-          driveToTerminalMinutes: null,
-          waitTimeMinutes: null,
-          ferryTimeMinutes: null,
-          driveFromTerminalMinutes: driveTotal,
-          nextDeparture: null,
-          spacesAvailable: null,
-          canMakeNextFerry: null,
-          missedSailings: [],
-          driveSummary: driveNoFerry.value.summary,
-          risks: { timingRisk: null, spaceRisk: null, overall: 'low' },
-        })
-      } else {
-        problems.push('Driving time unavailable')
+      const inputs: PlanInputs = {
+        now: now.toISOString(),
+        drive: fulfilled(driveNoFerry) ? driveNoFerry.value : null,
+        // Vessel positions and sailing space are refinements - degrade to empty
+        vessels: valueOr(vesselLocations, []).map(v => ({
+          vesselName: v.vesselName,
+          eta: v.eta ? v.eta.toISOString() : null,
+        })),
+        ferries: {
+          BAINBRIDGE: {
+            driveToTerminalMinutes: minutesOrNull(driveToSeattle),
+            schedule: toSailings(seattleSchedule),
+            spaces: toSpaces(seattleSpaces),
+            homeLegs: liveHomeLeg(driveFromBainbridge),
+          },
+          KINGSTON: {
+            driveToTerminalMinutes: minutesOrNull(driveToEdmonds),
+            schedule: toSailings(edmondsSchedule),
+            spaces: toSpaces(edmondsSpaces),
+            homeLegs: liveHomeLeg(driveFromKingston),
+          },
+        },
       }
 
-      // Bainbridge option
-      if (fulfilled(driveToSeattle) && fulfilled(driveFromBainbridge) && fulfilled(seattleSchedule)) {
-        results.push(calculateFerryRoute({
-          name: 'BAINBRIDGE',
-          now,
-          driveToTerminal: driveToSeattle.value,
-          driveFromTerminal: driveFromBainbridge.value,
-          crossingTime: CROSSING_TIMES.SEATTLE_BAINBRIDGE,
-          sailingSpaces: valueOr(seattleSpaces, []),
-          schedule: seattleSchedule.value,
-          vesselLocations: vessels,
-        }))
-      } else {
-        problems.push('Bainbridge route unavailable')
-      }
+      const plan = planRoutesV0(inputs)
 
-      // Kingston option
-      if (fulfilled(driveToEdmonds) && fulfilled(driveFromKingston) && fulfilled(edmondsSchedule)) {
-        results.push(calculateFerryRoute({
-          name: 'KINGSTON',
-          now,
-          driveToTerminal: driveToEdmonds.value,
-          driveFromTerminal: driveFromKingston.value,
-          crossingTime: CROSSING_TIMES.EDMONDS_KINGSTON,
-          sailingSpaces: valueOr(edmondsSpaces, []),
-          schedule: edmondsSchedule.value,
-          vesselLocations: vessels,
-        }))
-      } else {
-        problems.push('Kingston route unavailable')
-      }
-
-      if (results.length === 0) {
+      if (plan.routes.length === 0) {
         setRoutes([])
         setError('Could not reach the routing services. Try again in a moment.')
         return
       }
 
-      // Sort by total time
-      results.sort((a, b) => a.totalTimeMinutes - b.totalTimeMinutes)
-
-      setRoutes(results)
-      setWarnings(problems)
+      setRoutes(plan.routes)
+      setWarnings(plan.warnings)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -196,148 +181,5 @@ export function useRouteCalculation({
     error,
     warnings,
     refresh: calculate,
-  }
-}
-
-interface CalculateFerryRouteParams {
-  name: string
-  now: Date
-  driveToTerminal: number
-  driveFromTerminal: number
-  crossingTime: number
-  sailingSpaces: Awaited<ReturnType<typeof getTerminalSailingSpace>>
-  schedule: Awaited<ReturnType<typeof getScheduleToday>>
-  vesselLocations: VesselLocation[]
-}
-
-// Loading time after vessel arrives at dock (minutes)
-const VESSEL_LOADING_TIME = 15
-
-// Risk assessment thresholds
-function assessTimingRisk(waitMinutes: number | null): RiskLevel | null {
-  if (waitMinutes === null) return null
-  if (waitMinutes < 10) return 'high'      // Very tight
-  if (waitMinutes < 20) return 'medium'    // Cutting it close
-  return 'low'                              // Comfortable buffer
-}
-
-function assessSpaceRisk(spaces: number | null): RiskLevel | null {
-  if (spaces === null) return null
-  if (spaces < 10) return 'high'           // Might not get on
-  if (spaces < 30) return 'medium'         // Getting tight
-  return 'low'                              // Plenty of room
-}
-
-function calculateOverallRisk(timing: RiskLevel | null, space: RiskLevel | null): RiskLevel {
-  const risks = [timing, space].filter(Boolean) as RiskLevel[]
-  if (risks.includes('high')) return 'high'
-  if (risks.includes('medium')) return 'medium'
-  return 'low'
-}
-
-function calculateFerryRoute({
-  name,
-  now,
-  driveToTerminal,
-  driveFromTerminal,
-  crossingTime,
-  sailingSpaces,
-  schedule,
-  vesselLocations,
-}: CalculateFerryRouteParams): RouteOption {
-  // When would we arrive at the terminal?
-  const arrivalAtTerminal = new Date(now.getTime() + driveToTerminal * 60 * 1000)
-
-  // Find the next sailing we can make
-  // We need some buffer time (let's say 10 minutes to get in line and board)
-  const BUFFER_MINUTES = 10
-  const cutoffTime = new Date(arrivalAtTerminal.getTime() + BUFFER_MINUTES * 60 * 1000)
-
-  // Adjust scheduled departures based on real-time vessel locations
-  const adjustedSchedule = schedule.map(sailing => {
-    const vessel = vesselLocations.find(v =>
-      v.vesselName.toLowerCase() === sailing.vesselName.toLowerCase()
-    )
-
-    // If vessel has an ETA (meaning it's not at the dock yet),
-    // the actual departure will be delayed
-    if (vessel?.eta) {
-      const vesselArrival = vessel.eta
-      const estimatedDeparture = new Date(vesselArrival.getTime() + VESSEL_LOADING_TIME * 60 * 1000)
-
-      // Use the later of scheduled or estimated departure
-      if (estimatedDeparture > sailing.departureTime) {
-        return {
-          ...sailing,
-          departureTime: estimatedDeparture,
-          isDelayed: true,
-        }
-      }
-    }
-
-    return { ...sailing, isDelayed: false }
-  })
-
-  // Find missed sailings (depart before we can make it) and next catchable
-  const missedSailings = adjustedSchedule
-    .filter(s => s.departureTime <= cutoffTime && s.departureTime > now)
-    .map(s => s.departureTime)
-
-  const nextSailing = adjustedSchedule.find(s => s.departureTime > cutoffTime)
-
-  if (!nextSailing) {
-    // No more sailings today
-    return {
-      name,
-      type: 'ferry',
-      totalTimeMinutes: Infinity,
-      driveToTerminalMinutes: driveToTerminal,
-      waitTimeMinutes: null,
-      ferryTimeMinutes: crossingTime,
-      driveFromTerminalMinutes: driveFromTerminal,
-      nextDeparture: null,
-      spacesAvailable: null,
-      canMakeNextFerry: false,
-      missedSailings,
-      driveSummary: null,
-      risks: { timingRisk: null, spaceRisk: null, overall: 'high' },
-    }
-  }
-
-  // Find space info for this sailing
-  const spaceInfo = sailingSpaces.find(
-    s => Math.abs(s.departureTime.getTime() - nextSailing.departureTime.getTime()) < 5 * 60 * 1000
-  )
-
-  const spacesAvailable = spaceInfo?.driveUpSpaceCount ?? null
-  const canMakeIt = spacesAvailable === null || spacesAvailable > 0
-
-  // Calculate wait time at terminal
-  const waitTime = Math.max(
-    0,
-    Math.round((nextSailing.departureTime.getTime() - arrivalAtTerminal.getTime()) / 60000)
-  )
-
-  const totalTime = driveToTerminal + waitTime + crossingTime + driveFromTerminal
-
-  // Calculate risks
-  const timingRisk = assessTimingRisk(waitTime)
-  const spaceRisk = assessSpaceRisk(spacesAvailable)
-  const overallRisk = calculateOverallRisk(timingRisk, spaceRisk)
-
-  return {
-    name,
-    type: 'ferry',
-    totalTimeMinutes: canMakeIt ? totalTime : Infinity,
-    driveToTerminalMinutes: driveToTerminal,
-    waitTimeMinutes: waitTime,
-    ferryTimeMinutes: crossingTime,
-    driveFromTerminalMinutes: driveFromTerminal,
-    nextDeparture: nextSailing.departureTime,
-    spacesAvailable,
-    canMakeNextFerry: canMakeIt,
-    missedSailings,
-    driveSummary: null,
-    risks: { timingRisk, spaceRisk, overall: overallRisk },
   }
 }
