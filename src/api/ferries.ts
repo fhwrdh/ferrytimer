@@ -29,7 +29,7 @@ export const CROSSING_TIMES = {
 } as const
 
 // Parse .NET JSON date format: /Date(1234567890000-0800)/
-function parseWsdotDate(dateStr: string): Date {
+export function parseWsdotDate(dateStr: string): Date {
   const match = dateStr.match(/\/Date\((\d+)([+-]\d{4})?\)\//)
   if (!match) {
     console.warn('Could not parse date:', dateStr)
@@ -38,7 +38,7 @@ function parseWsdotDate(dateStr: string): Date {
   return new Date(parseInt(match[1], 10))
 }
 
-interface TerminalSailingSpaceResponse {
+export interface TerminalSailingSpaceResponse {
   TerminalID: number
   TerminalName: string
   DepartingSpaces: Array<{
@@ -55,7 +55,7 @@ interface TerminalSailingSpaceResponse {
   }>
 }
 
-interface VesselLocationResponse {
+export interface VesselLocationResponse {
   VesselID: number
   VesselName: string
   Latitude: number
@@ -66,6 +66,71 @@ interface VesselLocationResponse {
   LeftDock: string | null
   Eta: string | null
   EtaToScheduledDepartingTerminal: string | null
+}
+
+export function parseSailingSpace(
+  data: TerminalSailingSpaceResponse,
+  arrivalTerminalId?: number
+): SailingSpace[] {
+  if (!data?.DepartingSpaces) {
+    console.warn('No DepartingSpaces in response:', data)
+    return []
+  }
+
+  return data.DepartingSpaces
+    .filter(s => !s.IsCancelled)
+    .flatMap(sailing => {
+      // Colman Dock also sails to Bremerton, so a caller that knows its
+      // arrival terminal filters to it. The app still takes the first entry.
+      const spaces = arrivalTerminalId === undefined
+        ? sailing.SpaceForArrivalTerminals?.[0]
+        : sailing.SpaceForArrivalTerminals?.find(t => t.TerminalID === arrivalTerminalId)
+      if (arrivalTerminalId !== undefined && !spaces) return []
+      return [{
+        departureTime: parseWsdotDate(sailing.Departure),
+        driveUpSpaceCount: spaces?.DriveUpSpaceCount ?? 0,
+        reservationSpaceCount: 0, // Not provided in this endpoint
+        totalSpaces: spaces?.MaxSpaceCount ?? 0,
+        estimatedWait: null,
+      }]
+    })
+}
+
+export function parseVesselLocations(data: unknown): VesselLocation[] {
+  if (!Array.isArray(data)) {
+    console.warn('Vessel locations response is not an array:', data)
+    return []
+  }
+
+  return (data as VesselLocationResponse[]).map(vessel => ({
+    vesselId: vessel.VesselID,
+    vesselName: vessel.VesselName,
+    latitude: vessel.Latitude,
+    longitude: vessel.Longitude,
+    speed: vessel.Speed,
+    heading: vessel.Heading,
+    inService: vessel.InService,
+    // Eta arrives as /Date(ms-0700)/ like every other WSDOT timestamp.
+    // new Date() on that string is Invalid Date, which silently disabled
+    // the delay adjustment.
+    eta: vessel.Eta ? parseWsdotDate(vessel.Eta) : null,
+  }))
+}
+
+export function parseScheduleToday(
+  data: ScheduleTodayResponse
+): Array<{ departureTime: Date; arrivalTime: Date; vesselName: string }> {
+  const combo = data.TerminalCombos?.[0]
+  if (!combo?.Times) {
+    console.warn('No Times in schedule response:', data)
+    return []
+  }
+
+  return combo.Times.map(time => ({
+    departureTime: parseWsdotDate(time.DepartingTime),
+    arrivalTime: time.ArrivingTime ? parseWsdotDate(time.ArrivingTime) : parseWsdotDate(time.DepartingTime),
+    vesselName: time.VesselName,
+  }))
 }
 
 export async function getTerminalSailingSpace(
@@ -82,24 +147,7 @@ export async function getTerminalSailingSpace(
     }
 
     const data: TerminalSailingSpaceResponse = await response.json()
-
-    if (!data.DepartingSpaces) {
-      console.warn('No DepartingSpaces in response:', data)
-      return []
-    }
-
-    return data.DepartingSpaces
-      .filter(s => !s.IsCancelled)
-      .map(sailing => {
-        const spaces = sailing.SpaceForArrivalTerminals?.[0]
-        return {
-          departureTime: parseWsdotDate(sailing.Departure),
-          driveUpSpaceCount: spaces?.DriveUpSpaceCount ?? 0,
-          reservationSpaceCount: 0, // Not provided in this endpoint
-          totalSpaces: spaces?.MaxSpaceCount ?? 0,
-          estimatedWait: null,
-        }
-      })
+    return parseSailingSpace(data)
   } catch (err) {
     // Network or parsing errors - sailing space is optional
     console.warn(`Failed to fetch sailing space for terminal ${terminalId}:`, err)
@@ -110,7 +158,7 @@ export async function getTerminalSailingSpace(
 export async function getVesselLocations(): Promise<VesselLocation[]> {
   const url = `/api/wsdot-vessels`
 
-  let data: VesselLocationResponse[]
+  let data: unknown
   try {
     const response = await fetch(url)
     if (!response.ok) {
@@ -124,24 +172,10 @@ export async function getVesselLocations(): Promise<VesselLocation[]> {
     return []
   }
 
-  if (!Array.isArray(data)) {
-    console.warn('Vessel locations response is not an array:', data)
-    return []
-  }
-
-  return data.map(vessel => ({
-    vesselId: vessel.VesselID,
-    vesselName: vessel.VesselName,
-    latitude: vessel.Latitude,
-    longitude: vessel.Longitude,
-    speed: vessel.Speed,
-    heading: vessel.Heading,
-    inService: vessel.InService,
-    eta: vessel.Eta ? new Date(vessel.Eta) : null,
-  }))
+  return parseVesselLocations(data)
 }
 
-interface ScheduleTodayResponse {
+export interface ScheduleTodayResponse {
   ScheduleID: number
   TerminalCombos: Array<{
     DepartingTerminalID: number
@@ -170,16 +204,5 @@ export async function getScheduleToday(
   }
 
   const data: ScheduleTodayResponse = await response.json()
-
-  const combo = data.TerminalCombos?.[0]
-  if (!combo?.Times) {
-    console.warn('No Times in schedule response:', data)
-    return []
-  }
-
-  return combo.Times.map(time => ({
-    departureTime: parseWsdotDate(time.DepartingTime),
-    arrivalTime: time.ArrivingTime ? parseWsdotDate(time.ArrivingTime) : parseWsdotDate(time.DepartingTime),
-    vesselName: time.VesselName,
-  }))
+  return parseScheduleToday(data)
 }
