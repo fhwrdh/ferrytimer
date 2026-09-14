@@ -22,6 +22,9 @@ export interface DriveOptions {
   // Keep the route on pavement. Google's driving directions happily route
   // through a WSF sailing otherwise, which would double-count the boat.
   avoidFerries?: boolean
+  // Price the drive for a future start time; omit for traffic right now.
+  // Google rejects times in the past.
+  departAt?: Date
 }
 
 export async function getDriveRoute(
@@ -54,6 +57,7 @@ export async function getDriveRoute(
     routeModifiers: {
       avoidFerries: options.avoidFerries ?? false,
     },
+    departureTime: options.departAt?.toISOString(),
     languageCode: 'en-US',
     units: 'IMPERIAL',
   }

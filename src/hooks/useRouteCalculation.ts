@@ -9,7 +9,8 @@ import {
 } from '../api/ferries'
 import { getDriveMinutesAndSummary, getDriveTimeMinutes } from '../api/routes'
 import type { HomeLeg, PlanInputs, RecordedSailing, RecordedSpace } from '../lib/planInputs'
-import { planRoutesV0 } from '../lib/routePlan.v0'
+import { planRoutes, selectHomeLegTimes } from '../lib/routePlan'
+import type { FerryRouteName } from '../lib/planInputs'
 
 interface UseRouteCalculationProps {
   currentLocation: Location | null
@@ -60,7 +61,8 @@ function toSpaces(result: PromiseSettledResult<SailingSpace[]>): RecordedSpace[]
   }))
 }
 
-// The app prices the drive home with live traffic, hence departAt null
+// Live traffic right now (departAt null). The plan falls back to this leg when
+// the timed price for a sailing's landing can't be fetched.
 function liveHomeLeg(result: PromiseSettledResult<number>): HomeLeg[] {
   return fulfilled(result) ? [{ departAt: null, minutes: result.value }] : []
 }
@@ -159,7 +161,28 @@ export function useRouteCalculation({
         },
       }
 
-      const plan = planRoutesV0(inputs)
+      // Stage 2: price the drive home at each chosen sailing's landing time
+      const landings = selectHomeLegTimes(inputs)
+      const arrivalTerminals: Record<FerryRouteName, Location> = {
+        BAINBRIDGE: TERMINAL_LOCATIONS[TERMINALS.BAINBRIDGE],
+        KINGSTON: TERMINAL_LOCATIONS[TERMINALS.KINGSTON],
+      }
+      const timedRequests = (['BAINBRIDGE', 'KINGSTON'] as const).flatMap(name =>
+        landings[name].map(departAt => ({ name, departAt }))
+      )
+      const timedLegs = await Promise.allSettled(
+        timedRequests.map(({ name, departAt }) =>
+          getDriveTimeMinutes(arrivalTerminals[name], homeLocation, { departAt: new Date(departAt) })
+        )
+      )
+      timedLegs.forEach((leg, i) => {
+        if (fulfilled(leg)) {
+          const { name, departAt } = timedRequests[i]
+          inputs.ferries[name].homeLegs.push({ departAt, minutes: leg.value })
+        }
+      })
+
+      const plan = planRoutes(inputs)
 
       if (plan.routes.length === 0) {
         setRoutes([])
