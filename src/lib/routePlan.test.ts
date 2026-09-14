@@ -142,6 +142,20 @@ describe('selectHomeLegTimes', () => {
     expect(selectHomeLegTimes(inputs).BAINBRIDGE).toEqual([at(75), at(125)])
   })
 
+  it('returns only the primary landing when a nearly full primary has no later sailing', () => {
+    const inputs = planInputs({
+      bainbridge: {
+        schedule: [{ departure: at(40), arrival: null, vesselName: 'Wenatchee' }],
+        spaces: [{ departure: at(40), driveUpSpaceCount: 5, totalSpaces: 200 }],
+      },
+    })
+    expect(selectHomeLegTimes(inputs).BAINBRIDGE).toEqual([at(75)])
+  })
+
+  it('returns nothing for a route with no catchable sailings', () => {
+    expect(selectHomeLegTimes(planInputs({ bainbridge: { schedule: [] } })).BAINBRIDGE).toEqual([])
+  })
+
   it('returns nothing for a route missing its schedule', () => {
     expect(selectHomeLegTimes(planInputs({ bainbridge: { schedule: null } })).BAINBRIDGE).toEqual([])
   })

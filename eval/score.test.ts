@@ -1,17 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import { planRoutes } from '../src/lib/routePlan'
+import { PARAMS, planRoutes } from '../src/lib/routePlan'
 import { planRoutesV0 } from '../src/lib/routePlan.v0'
 import { at, FIXTURE_NOW, planInputs } from '../src/lib/fixtures'
 import { HANDCRAFTED, HANDCRAFTED_PARAMS } from './scenarios/handcrafted'
 import {
   checkHandcrafted,
-  gateAgainstBaseline,
+  gateAgainstLive,
   isHoldout,
+  paramKeyDiff,
   predictionFromPlan,
   predictionFromV0,
+  scoredIdsHash,
+  scorePaired,
   scoreSet,
+  skippedGates,
   worstMisses,
   type Outcome,
+  type PairedMetrics,
+  type PairedRow,
+  type Prediction,
   type ScoredRow,
 } from './score'
 
@@ -101,36 +108,156 @@ describe('scoreSet', () => {
   })
 })
 
-describe('split and gates', () => {
+describe('split', () => {
+  const nows = Array.from({ length: 1000 }, (_, i) => new Date(Date.parse(FIXTURE_NOW) + i * 20 * 60_000).toISOString())
+
   it('assigns holdout deterministically at roughly one in five', () => {
-    const ids = Array.from({ length: 1000 }, (_, i) => `downtown-2026-09-14T${String(i).padStart(4, '0')}`)
-    const holdout = ids.filter(isHoldout).length
-    expect(isHoldout(ids[0])).toBe(isHoldout(ids[0]))
+    const holdout = nows.filter(isHoldout).length
+    expect(isHoldout(nows[0])).toBe(isHoldout(nows[0]))
     expect(holdout).toBeGreaterThan(150)
     expect(holdout).toBeLessThan(250)
   })
 
-  const set = (mae: number | null, rate: number | null) => ({
-    samples: 10,
-    unresolved: 0,
-    overall: { n: 10, meanAbsError: mae, meanSignedError: 0, p90AbsError: mae },
-    routes: {
-      DRIVE: { n: 0, meanAbsError: null, meanSignedError: null, p90AbsError: null },
-      BAINBRIDGE: { n: 0, meanAbsError: null, meanSignedError: null, p90AbsError: null },
-      KINGSTON: { n: 0, meanAbsError: null, meanSignedError: null, p90AbsError: null },
-    },
-    winner: { n: 10, agree: 0, rate },
-  })
-  const baseline = { generatedAt: 'x', tune: set(8, 0.5), holdout: set(8, 0.5) }
-
-  it('passes within tolerance and equal agreement', () => {
-    expect(gateAgainstBaseline(set(10, 0.5), baseline)).toEqual([])
-  })
-
-  it('fails on worse error or lower agreement', () => {
-    expect(gateAgainstBaseline(set(10.5, 0.4), baseline)).toEqual([
-      'holdout mean absolute error 10.5m is worse than baseline 8.0m by more than 2m',
-      'holdout winner agreement 40% is lower than baseline 50%',
+  it('keeps twin records from the same run (same now, different origin) in the same split', () => {
+    const twins = nows.map(now => [
+      { sampleId: `downtown-${now}`, now },
+      { sampleId: `northgate-${now}`, now },
     ])
+    for (const [a, b] of twins) expect(isHoldout(a.now)).toBe(isHoldout(b.now))
+    // Hashing sampleId instead would split some twins apart
+    expect(twins.some(([a, b]) => isHoldout(a.sampleId) !== isHoldout(b.sampleId))).toBe(true)
+  })
+})
+
+const pred = (arrivals: Partial<Record<'DRIVE' | 'BAINBRIDGE' | 'KINGSTON', string>>, winner: Prediction['winner']): Prediction => ({
+  arrivals: { DRIVE: arrivals.DRIVE ?? null, BAINBRIDGE: arrivals.BAINBRIDGE ?? null, KINGSTON: arrivals.KINGSTON ?? null },
+  winner,
+})
+
+describe('scorePaired', () => {
+  const rows: PairedRow[] = [
+    // all resolved; both predict everything
+    {
+      outcome: outcome('a', { DRIVE: at(100), BAINBRIDGE: at(80), KINGSTON: at(90) }, 'BAINBRIDGE'),
+      v0: pred({ DRIVE: at(100), BAINBRIDGE: at(84), KINGSTON: at(90) }, 'BAINBRIDGE'),
+      v1: pred({ DRIVE: at(100), BAINBRIDGE: at(82), KINGSTON: at(92) }, 'KINGSTON'),
+    },
+    // KINGSTON unresolved; v1 skips BAINBRIDGE (a hard trip v0 got badly wrong)
+    {
+      outcome: outcome('b', { DRIVE: at(100), BAINBRIDGE: at(80) }, 'BAINBRIDGE'),
+      v0: pred({ DRIVE: at(100), BAINBRIDGE: at(120), KINGSTON: at(95) }, 'DRIVE'),
+      v1: pred({ DRIVE: at(100), KINGSTON: at(95) }, 'DRIVE'),
+    },
+  ]
+
+  it('counts errors only on rows where the outcome resolved and both algorithms predicted', () => {
+    const m = scorePaired(rows)
+    expect(m.samples).toBe(2)
+    expect(m.routes.BAINBRIDGE).toEqual({
+      resolved: 2,
+      v0Predicted: 2,
+      v1Predicted: 1,
+      v0: { n: 1, meanAbsError: 4, meanSignedError: 4, p90AbsError: 4 },
+      v1: { n: 1, meanAbsError: 2, meanSignedError: 2, p90AbsError: 2 },
+    })
+    expect(m.routes.KINGSTON).toMatchObject({ resolved: 1, v0Predicted: 1, v1Predicted: 1 })
+    expect(m.routes.KINGSTON.v1.meanAbsError).toBe(2)
+    expect(m.routes.DRIVE.v0.n).toBe(2)
+  })
+
+  it('excludes DRIVE from ferry-overall', () => {
+    const m = scorePaired([{
+      outcome: outcome('c', { DRIVE: at(100), BAINBRIDGE: at(80), KINGSTON: at(90) }, 'BAINBRIDGE'),
+      v0: pred({ DRIVE: at(130), BAINBRIDGE: at(82), KINGSTON: at(94) }, 'BAINBRIDGE'),
+      v1: pred({ DRIVE: at(160), BAINBRIDGE: at(80), KINGSTON: at(90) }, 'BAINBRIDGE'),
+    }])
+    expect(m.ferryOverall.v0).toEqual({ n: 2, meanAbsError: 3, meanSignedError: 3, p90AbsError: 4 })
+    expect(m.ferryOverall.v1).toEqual({ n: 2, meanAbsError: 0, meanSignedError: 0, p90AbsError: 0 })
+  })
+
+  it('scores winner agreement only on fully resolved rows', () => {
+    const m = scorePaired(rows)
+    expect(m.winner.fullyResolved).toBe(1)
+    expect(m.winner.v0).toEqual({ n: 1, agree: 1, rate: 1 })
+    expect(m.winner.v1).toEqual({ n: 1, agree: 0, rate: 0 })
+  })
+
+  it('returns null metrics and no winner rows for an empty set', () => {
+    const m = scorePaired([])
+    expect(m.ferryOverall.v1.meanAbsError).toBeNull()
+    expect(m.winner.v0.rate).toBeNull()
+    expect(m.routes.KINGSTON.resolved).toBe(0)
+  })
+})
+
+describe('gateAgainstLive', () => {
+  const route = (mae: number | null) => ({ n: mae === null ? 0 : 10, meanAbsError: mae, meanSignedError: mae, p90AbsError: mae })
+  const coverage = (resolved: number, v0Predicted: number, v1Predicted: number) =>
+    ({ resolved, v0Predicted, v1Predicted, v0: route(null), v1: route(null) })
+  const holdout = (opts: {
+    mae0?: number | null; mae1?: number | null; rate0?: number | null; rate1?: number | null
+    bainbridge?: [number, number, number]; kingston?: [number, number, number]
+  } = {}): PairedMetrics => {
+    const { mae0 = 8, mae1 = 8, rate0 = 0.5, rate1 = 0.5, bainbridge = [10, 10, 10], kingston = [10, 10, 10] } = opts
+    const agreement = (rate: number | null) => ({ n: rate === null ? 0 : 10, agree: rate === null ? 0 : rate * 10, rate })
+    return {
+      samples: 10,
+      routes: { DRIVE: coverage(10, 10, 10), BAINBRIDGE: coverage(...bainbridge), KINGSTON: coverage(...kingston) },
+      ferryOverall: { v0: route(mae0), v1: route(mae1) },
+      winner: { fullyResolved: 10, v0: agreement(rate0), v1: agreement(rate1) },
+    }
+  }
+
+  it('passes within tolerance, equal agreement and equal coverage', () => {
+    expect(gateAgainstLive(holdout({ mae1: 10 }))).toEqual([])
+    expect(skippedGates(holdout())).toEqual([])
+  })
+
+  it('fails when v1 ferry error is worse than live v0 by more than the tolerance', () => {
+    expect(gateAgainstLive(holdout({ mae1: 10.5 }))).toEqual([
+      'holdout ferry mean absolute error 10.5m is worse than v0 8.0m by more than 2m',
+    ])
+  })
+
+  it('fails when v1 winner agreement is lower than live v0', () => {
+    expect(gateAgainstLive(holdout({ rate1: 0.4 }))).toEqual(['holdout winner agreement 40% is lower than v0 50%'])
+  })
+
+  it('fails when v1 predicts fewer resolved ferry trips than v0', () => {
+    expect(gateAgainstLive(holdout({ kingston: [10, 9, 7] }))).toEqual([
+      'KINGSTON: v1 predicts fewer resolved trips than v0 (7 vs 9 of 10)',
+    ])
+  })
+
+  it('does not fail but reports skipped gates when metrics are null', () => {
+    const empty = holdout({ mae0: null, mae1: null, rate0: null, rate1: 0.1, bainbridge: [0, 0, 0], kingston: [0, 0, 0] })
+    expect(gateAgainstLive(empty)).toEqual([])
+    expect(skippedGates(empty)).toEqual([
+      'ferry mean absolute error',
+      'winner agreement',
+      'BAINBRIDGE coverage',
+      'KINGSTON coverage',
+    ])
+  })
+})
+
+describe('paramKeyDiff', () => {
+  it('matches the frozen handcrafted parameters to PARAMS today', () => {
+    expect(paramKeyDiff(PARAMS, HANDCRAFTED_PARAMS)).toEqual([])
+  })
+
+  it('reports deep keys missing on either side', () => {
+    expect(paramKeyDiff(
+      { a: 1, crossingMinutes: { BAINBRIDGE: 35, KINGSTON: 30, SOUTHWORTH: 40 } },
+      { a: 1, b: 2, crossingMinutes: { BAINBRIDGE: 35, KINGSTON: 30 } },
+    )).toEqual(['+crossingMinutes.SOUTHWORTH', '-b'])
+  })
+})
+
+describe('scoredIdsHash', () => {
+  it('is a stable sha256 hex independent of order', () => {
+    expect(scoredIdsHash(['b', 'a'])).toBe(scoredIdsHash(['a', 'b']))
+    expect(scoredIdsHash(['a'])).toMatch(/^[0-9a-f]{64}$/)
+    expect(scoredIdsHash(['a'])).not.toBe(scoredIdsHash(['a', 'b']))
   })
 })

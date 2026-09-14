@@ -1,6 +1,7 @@
 // Pure scoring for the eval harness. Error sign: predicted minus observed, so
 // positive means the algorithm said you'd arrive later than you did.
 
+import { createHash } from 'node:crypto'
 import type { RoutePlan } from '../src/lib/routePlan'
 import type { RouteOption } from '../src/types'
 
@@ -49,10 +50,44 @@ export interface Miss {
   caughtSailing: string | null
 }
 
+// v0 and v1 scored on the same sample. Paired metrics only count a route when
+// the outcome resolved AND both algorithms predicted it, so neither side can
+// improve its error by declining to predict hard trips.
+export interface PairedRow {
+  outcome: Outcome
+  v0: Prediction
+  v1: Prediction
+}
+
+export interface PairedRouteMetrics {
+  resolved: number
+  v0Predicted: number
+  v1Predicted: number
+  v0: RouteMetrics
+  v1: RouteMetrics
+}
+
+export interface WinnerAgreement {
+  n: number
+  agree: number
+  rate: number | null
+}
+
+export interface PairedMetrics {
+  samples: number
+  routes: Record<RouteName, PairedRouteMetrics>
+  ferryOverall: { v0: RouteMetrics; v1: RouteMetrics }
+  // Only rows where all three routes resolved, so observedBest is a real best
+  winner: { fullyResolved: number; v0: WinnerAgreement; v1: WinnerAgreement }
+}
+
+// A record for humans. Gates compare against v0 scored live, not this file.
 export interface Baseline {
   generatedAt: string
-  tune: SetMetrics
-  holdout: SetMetrics
+  sampleCount: number
+  scoredIdsSha256: string
+  tune: PairedMetrics
+  holdout: PairedMetrics
 }
 
 export interface HandcraftedExpect {
@@ -162,33 +197,147 @@ export function worstMisses(rows: ScoredRow[], limit: number): Miss[] {
     .slice(0, limit)
 }
 
-// FNV-1a 32-bit; stable across runs and machines
-export function isHoldout(sampleId: string): boolean {
+// FNV-1a 32-bit; stable across runs and machines. Callers pass the sample's
+// `now` (run time), not its sampleId: records from different origins in the
+// same sampler run share `now` and nearly all ferry inputs, so they must land
+// in the same split or the holdout leaks.
+export function isHoldout(key: string): boolean {
   let hash = 0x811c9dc5
-  for (let i = 0; i < sampleId.length; i++) {
-    hash ^= sampleId.charCodeAt(i)
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i)
     hash = Math.imul(hash, 0x01000193) >>> 0
   }
   return hash % 5 === 0
 }
 
+const FERRY_NAMES: RouteName[] = ['BAINBRIDGE', 'KINGSTON']
+
+function arrivalError(predicted: string | null, observed: RouteOutcome): number | null {
+  if (!('arrivalAt' in observed) || predicted === null) return null
+  return (Date.parse(predicted) - Date.parse(observed.arrivalAt)) / 60_000
+}
+
+function agreement(n: number, agree: number): WinnerAgreement {
+  return { n, agree, rate: n === 0 ? null : agree / n }
+}
+
+export function scorePaired(rows: PairedRow[]): PairedMetrics {
+  const errors = (): Record<RouteName, number[]> => ({ DRIVE: [], BAINBRIDGE: [], KINGSTON: [] })
+  const v0Errors = errors()
+  const v1Errors = errors()
+  const coverage = Object.fromEntries(
+    ROUTE_NAMES.map(name => [name, { resolved: 0, v0Predicted: 0, v1Predicted: 0 }])
+  ) as Record<RouteName, { resolved: number; v0Predicted: number; v1Predicted: number }>
+  let fullyResolved = 0
+  const winners = { v0: { n: 0, agree: 0 }, v1: { n: 0, agree: 0 } }
+
+  for (const row of rows) {
+    let allResolved = true
+    for (const name of ROUTE_NAMES) {
+      const observed = row.outcome.routes[name]
+      if (!('arrivalAt' in observed)) {
+        allResolved = false
+        continue
+      }
+      coverage[name].resolved++
+      if (row.v0.arrivals[name] !== null) coverage[name].v0Predicted++
+      if (row.v1.arrivals[name] !== null) coverage[name].v1Predicted++
+      const e0 = arrivalError(row.v0.arrivals[name], observed)
+      const e1 = arrivalError(row.v1.arrivals[name], observed)
+      if (e0 !== null && e1 !== null) {
+        v0Errors[name].push(e0)
+        v1Errors[name].push(e1)
+      }
+    }
+    if (allResolved && row.outcome.observedBest) {
+      fullyResolved++
+      for (const key of ['v0', 'v1'] as const) {
+        const winner = row[key].winner
+        if (!winner) continue
+        winners[key].n++
+        if (winner === row.outcome.observedBest) winners[key].agree++
+      }
+    }
+  }
+
+  const routes = Object.fromEntries(
+    ROUTE_NAMES.map(name => [name, { ...coverage[name], v0: metrics(v0Errors[name]), v1: metrics(v1Errors[name]) }])
+  ) as Record<RouteName, PairedRouteMetrics>
+
+  return {
+    samples: rows.length,
+    routes,
+    ferryOverall: {
+      v0: metrics(FERRY_NAMES.flatMap(name => v0Errors[name])),
+      v1: metrics(FERRY_NAMES.flatMap(name => v1Errors[name])),
+    },
+    winner: {
+      fullyResolved,
+      v0: agreement(winners.v0.n, winners.v0.agree),
+      v1: agreement(winners.v1.n, winners.v1.agree),
+    },
+  }
+}
+
 const pct = (rate: number) => `${Math.round(rate * 100)}%`
 
-export function gateAgainstBaseline(holdout: SetMetrics, baseline: Baseline): string[] {
+// Holdout gates: v1 against v0 scored live on the same rows. DRIVE is excluded
+// because its truth is the sample's own drive prediction (error always zero).
+export function gateAgainstLive(holdout: PairedMetrics): string[] {
   const failures: string[] = []
-  const mae = holdout.overall.meanAbsError
-  const baseMae = baseline.holdout.overall.meanAbsError
-  if (mae !== null && baseMae !== null && mae > baseMae + MAE_TOLERANCE_MINUTES) {
+  const mae1 = holdout.ferryOverall.v1.meanAbsError
+  const mae0 = holdout.ferryOverall.v0.meanAbsError
+  if (mae1 !== null && mae0 !== null && mae1 > mae0 + MAE_TOLERANCE_MINUTES) {
     failures.push(
-      `holdout mean absolute error ${mae.toFixed(1)}m is worse than baseline ${baseMae.toFixed(1)}m by more than ${MAE_TOLERANCE_MINUTES}m`
+      `holdout ferry mean absolute error ${mae1.toFixed(1)}m is worse than v0 ${mae0.toFixed(1)}m by more than ${MAE_TOLERANCE_MINUTES}m`
     )
   }
-  const rate = holdout.winner.rate
-  const baseRate = baseline.holdout.winner.rate
-  if (rate !== null && baseRate !== null && rate < baseRate) {
-    failures.push(`holdout winner agreement ${pct(rate)} is lower than baseline ${pct(baseRate)}`)
+  const rate1 = holdout.winner.v1.rate
+  const rate0 = holdout.winner.v0.rate
+  if (rate1 !== null && rate0 !== null && rate1 < rate0) {
+    failures.push(`holdout winner agreement ${pct(rate1)} is lower than v0 ${pct(rate0)}`)
+  }
+  for (const name of FERRY_NAMES) {
+    const r = holdout.routes[name]
+    if (r.v1Predicted < r.v0Predicted) {
+      failures.push(
+        `${name}: v1 predicts fewer resolved trips than v0 (${r.v1Predicted} vs ${r.v0Predicted} of ${r.resolved})`
+      )
+    }
   }
   return failures
+}
+
+// Gates gateAgainstLive could not evaluate for lack of data
+export function skippedGates(holdout: PairedMetrics): string[] {
+  const skipped: string[] = []
+  if (holdout.ferryOverall.v1.meanAbsError === null || holdout.ferryOverall.v0.meanAbsError === null) {
+    skipped.push('ferry mean absolute error')
+  }
+  if (holdout.winner.v1.rate === null || holdout.winner.v0.rate === null) skipped.push('winner agreement')
+  for (const name of FERRY_NAMES) {
+    if (holdout.routes[name].resolved === 0) skipped.push(`${name} coverage`)
+  }
+  return skipped
+}
+
+function deepKeys(value: unknown, prefix = ''): string[] {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return [prefix]
+  return Object.keys(value).flatMap(key => deepKeys((value as Record<string, unknown>)[key], prefix ? `${prefix}.${key}` : key))
+}
+
+// Deep key difference: "+key" exists only in a, "-key" only in b. Empty when the shapes match.
+export function paramKeyDiff(a: object, b: object): string[] {
+  const keysA = new Set(deepKeys(a))
+  const keysB = new Set(deepKeys(b))
+  return [
+    ...[...keysA].filter(k => !keysB.has(k)).sort().map(k => `+${k}`),
+    ...[...keysB].filter(k => !keysA.has(k)).sort().map(k => `-${k}`),
+  ]
+}
+
+export function scoredIdsHash(sampleIds: string[]): string {
+  return createHash('sha256').update([...sampleIds].sort().join('\n')).digest('hex')
 }
 
 export function checkHandcrafted(plan: RoutePlan, expect: HandcraftedExpect): string[] {
