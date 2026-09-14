@@ -164,9 +164,11 @@ at departure time; the eval excludes them.
 
 A sample is resolvable once `now + 3 h` is at least 30 minutes in the past.
 
-Expected volume: 2 origins × ~40 schema-2 runs ≈ 80 samples by 21:00; samples
-after about 18:30 resolve only after their trips finish. Thin by design; the
-scorecard shows counts next to every metric.
+Expected volume on 2026-09-14: 2 origins for the 11:40–12:20 PDT schema-2
+runs, then 3 origins (AI2 added) for ~26 runs to 21:00 ≈ 85 samples; at 17
+calls per run the day uses ~510 of the 650 budget. Samples after about 18:30
+resolve only after their trips finish. Thin by design; the scorecard shows
+counts next to every metric.
 
 ## 5. Evaluation
 
@@ -181,7 +183,7 @@ time, so its arrival = `now + totalTimeMinutes`.
 | Samples: holdout | ferry-overall v0 vs v1, winner agreement v0 vs v1, coverage counts; no sample ids | see gates → exit 1 |
 
 **Split.** Tune/holdout by a deterministic FNV-1a hash of the sample's `now`
-(run time), 80/20, stable across runs. Records from the two origins in one
+(run time), 80/20, stable across runs. Records from different origins in one
 sampler run share `now` and nearly all ferry inputs; hashing `sampleId` would
 put twins in different sets and leak the holdout.
 
