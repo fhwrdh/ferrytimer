@@ -190,7 +190,45 @@ code {
   margin: 18px 0;
   overflow-x: auto;
 }
-.diagram pre.mermaid { margin: 0; background: transparent; }
+figure.arch {
+  width: min(880px, calc(100vw - 40px));
+  margin-inline: 0;
+  padding: 16px;
+}
+figure.arch svg {
+  display: block;
+  width: 100%;
+  min-width: 820px;
+  height: auto;
+  color: var(--ink);
+}
+figure.arch figcaption {
+  font-size: 15px;
+  color: var(--muted);
+  margin-top: 12px;
+  max-width: 70ch;
+}
+@media (max-width: 860px) {
+  figure.arch { width: 100%; }
+}
+.arch .zone { fill: var(--ground); stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.arch .upstream { fill: var(--code-bg); stroke: var(--muted); stroke-width: 1.2; }
+.arch .node { fill: var(--surface); stroke: var(--ink); stroke-width: 1.2; }
+.arch .node.frozen { stroke-dasharray: 3 3; }
+.arch .node.store { fill: var(--code-bg); }
+.arch .accent-node { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.arch .caution-node { fill: var(--caution-soft); stroke: var(--caution); stroke-width: 2; }
+.arch .edge { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+.arch .accent-edge { stroke: var(--accent); stroke-width: 2; }
+.arch .arrowhead { fill: var(--ink); }
+.arch text { fill: var(--ink); }
+.arch .t-title { font-family: var(--display); font-size: 14px; font-weight: 600; }
+.arch .t-sub { font-family: var(--display); font-size: 12px; fill: var(--muted); }
+.arch .t-zone { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; fill: var(--muted); }
+.arch .t-mono { font-family: var(--mono); font-size: 13px; }
+.arch .t-edge { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.arch .accent-text { fill: var(--accent); }
+.arch .caution-text { fill: var(--caution); }
 
 .table-wrap { overflow-x: auto; margin: 16px 0 20px; }
 table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.45; }
@@ -301,25 +339,129 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
       <section id="system">
         <h2>System at a glance</h2>
         <p>Three things run in three places. The algorithm is one pure function shared by all of them, so what the eval scores is literally what the app runs.</p>
-        <div class="diagram">
-<pre class="mermaid">
-flowchart LR
-  subgraph Droplet["Droplet (cron, every 20 min)"]
-    S["Sampler<br/>3 origins → T&amp;C Poulsbo"]
-  end
-  subgraph Laptop["Laptop (eval)"]
-    F["eval:fetch"] --> R["eval:resolve<br/>+ WSDOT vessel history"]
-    R --> E["eval<br/>v0 vs v1, paired"]
-    E --> A["Tuning agent<br/>edits routePlan.ts"]
-    A --> E
-  end
-  subgraph App["PWA in the browser"]
-    H["Hook: fetch stage 1 + 2"] --> P["planRoutes (v1)"]
-  end
-  S -- samples.jsonl --> F
-  A -. same file .-> P
-</pre>
-        </div>
+        <figure class="diagram arch">
+          <svg viewBox="0 0 1160 700" role="img" aria-label="Architecture: the droplet sampler records Google and WSDOT data to samples.jsonl; the laptop copies it, resolves outcomes from WSDOT vessel history, and scores frozen v0 against v1 while a tuning agent edits routePlan.ts; the browser app calls the droplet's API proxy and runs the same routePlan.ts. The live app is still the old build.">
+            <defs>
+              <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" class="arrowhead"></path>
+              </marker>
+            </defs>
+
+            <!-- Upstream services -->
+            <rect class="upstream" x="40" y="30" width="320" height="60" rx="4"></rect>
+            <text class="t-title" x="200" y="55" text-anchor="middle">WSDOT Ferries API</text>
+            <text class="t-sub" x="200" y="74" text-anchor="middle">schedule · car deck space · vessels · history</text>
+            <rect class="upstream" x="460" y="30" width="340" height="60" rx="4"></rect>
+            <text class="t-title" x="630" y="55" text-anchor="middle">Google Routes API</text>
+            <text class="t-sub" x="630" y="74" text-anchor="middle">traffic-aware drives · 1,000 calls/day cap</text>
+
+            <!-- Zones -->
+            <rect class="zone" x="20" y="140" width="360" height="445" rx="6"></rect>
+            <text class="t-zone" x="368" y="575" text-anchor="end">LAPTOP · eval + tuning</text>
+            <rect class="zone" x="410" y="140" width="350" height="445" rx="6"></rect>
+            <text class="t-zone" x="748" y="575" text-anchor="end">DROPLET · cron + proxy</text>
+            <rect class="zone" x="790" y="140" width="350" height="445" rx="6"></rect>
+            <text class="t-zone" x="1128" y="575" text-anchor="end">PHONE · PWA</text>
+
+            <!-- Laptop -->
+            <rect class="node" x="40" y="180" width="150" height="60" rx="4"></rect>
+            <text class="t-title" x="115" y="205" text-anchor="middle">eval:resolve</text>
+            <text class="t-sub" x="115" y="224" text-anchor="middle">no Google calls</text>
+            <rect class="node" x="210" y="180" width="150" height="60" rx="4"></rect>
+            <text class="t-title" x="285" y="205" text-anchor="middle">eval:fetch</text>
+            <text class="t-sub" x="285" y="224" text-anchor="middle">copy samples</text>
+
+            <rect class="node" x="40" y="340" width="320" height="90" rx="4"></rect>
+            <text class="t-title" x="200" y="364" text-anchor="middle">eval:run</text>
+            <text class="t-sub" x="200" y="384" text-anchor="middle">v0 and v1 on the same trips · 5 gates</text>
+            <text class="t-sub" x="200" y="401" text-anchor="middle">guardrails with frozen params</text>
+            <text class="t-sub" x="200" y="418" text-anchor="middle">protected files vs eval-base tag</text>
+
+            <rect class="node" x="40" y="470" width="210" height="70" rx="4"></rect>
+            <text class="t-title" x="145" y="496" text-anchor="middle">tuning agent</text>
+            <text class="t-sub" x="145" y="515" text-anchor="middle">tune-route-plan skill</text>
+            <text class="t-sub" x="145" y="531" text-anchor="middle">may edit v1 only</text>
+
+            <rect class="node frozen" x="270" y="470" width="90" height="70" rx="4"></rect>
+            <text class="t-title" x="315" y="498" text-anchor="middle">v0</text>
+            <text class="t-sub" x="315" y="517" text-anchor="middle">frozen</text>
+            <text class="t-sub" x="315" y="532" text-anchor="middle">baseline</text>
+
+            <!-- Droplet -->
+            <rect class="node" x="430" y="180" width="310" height="70" rx="4"></rect>
+            <text class="t-title" x="585" y="205" text-anchor="middle">sampler · cron every 20 min</text>
+            <text class="t-sub" x="585" y="224" text-anchor="middle">Downtown, Northgate, AI2 → Poulsbo</text>
+            <text class="t-sub" x="585" y="240" text-anchor="middle">records inputs, never a plan</text>
+
+            <rect class="node store" x="450" y="268" width="270" height="44" rx="4"></rect>
+            <text class="t-mono" x="585" y="295" text-anchor="middle">data/samples.jsonl</text>
+
+            <rect class="node" x="430" y="380" width="310" height="70" rx="4"></rect>
+            <text class="t-title" x="585" y="405" text-anchor="middle">nginx + server.mjs</text>
+            <text class="t-sub" x="585" y="424" text-anchor="middle">/api proxy · holds API keys</text>
+            <text class="t-sub" x="585" y="440" text-anchor="middle">same-origin · 40 req/min per IP</text>
+
+            <rect class="node caution-node" x="430" y="480" width="310" height="50" rx="4"></rect>
+            <text class="t-title caution-text" x="585" y="502" text-anchor="middle">dist/ · live app is the old build</text>
+            <text class="t-sub" x="585" y="520" text-anchor="middle">v1 deploy on hold for approval</text>
+
+            <!-- Browser -->
+            <rect class="node" x="810" y="180" width="310" height="50" rx="4"></rect>
+            <text class="t-title" x="965" y="202" text-anchor="middle">Ferry Timer screen</text>
+            <text class="t-sub" x="965" y="220" text-anchor="middle">recommendation · details</text>
+
+            <rect class="node" x="810" y="260" width="310" height="170" rx="4"></rect>
+            <text class="t-title" x="965" y="285" text-anchor="middle">useRouteCalculation</text>
+            <text class="t-sub" x="965" y="310" text-anchor="middle">stage 1: drives, schedule, space, vessels</text>
+            <text class="t-sub" x="965" y="330" text-anchor="middle">selectHomeLegTimes → landing times</text>
+            <text class="t-sub" x="965" y="350" text-anchor="middle">stage 2: drive home priced at landing</text>
+            <text class="t-sub" x="965" y="378" text-anchor="middle">drops superseded runs</text>
+            <text class="t-sub" x="965" y="396" text-anchor="middle">skips GPS moves under 500 m</text>
+
+            <!-- Shared algorithm -->
+            <rect class="node accent-node" x="40" y="610" width="1080" height="70" rx="4"></rect>
+            <text class="t-title accent-text" x="580" y="638" text-anchor="middle">src/lib/routePlan.ts · planRoutes (v1)</text>
+            <text class="t-sub" x="580" y="660" text-anchor="middle">one pure function: scored by the eval, run by the app, edited by the agent</text>
+
+            <!-- Edges: sampler to upstreams -->
+            <polyline class="edge" points="450,180 450,112 330,112 330,90" marker-end="url(#arch-arrow)"></polyline>
+            <text class="t-edge" x="456" y="152">free</text>
+            <line class="edge" x1="520" y1="180" x2="520" y2="90" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="526" y="152">17 calls/run</text>
+            <line class="edge" x1="585" y1="250" x2="585" y2="266" marker-end="url(#arch-arrow)"></line>
+
+            <!-- Proxy to upstreams -->
+            <polyline class="edge" points="740,400 755,400 755,90" marker-end="url(#arch-arrow)"></polyline>
+            <text class="t-edge" x="764" y="112">proxied with server keys</text>
+
+            <!-- Samples to laptop -->
+            <polyline class="edge" points="450,302 285,302 285,242" marker-end="url(#arch-arrow)"></polyline>
+            <text class="t-edge" x="368" y="295" text-anchor="middle">scp</text>
+            <line class="edge" x1="210" y1="210" x2="192" y2="210" marker-end="url(#arch-arrow)"></line>
+
+            <!-- Resolve to WSDOT history and to run -->
+            <line class="edge" x1="115" y1="180" x2="115" y2="90" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="122" y="120">vessel history</text>
+            <line class="edge" x1="115" y1="240" x2="115" y2="338" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="122" y="295">outcomes</text>
+
+            <!-- Run to agent, v0 and v1 -->
+            <line class="edge" x1="140" y1="430" x2="140" y2="468" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="148" y="455">scorecard</text>
+            <line class="edge" x1="315" y1="430" x2="315" y2="468" marker-end="url(#arch-arrow)"></line>
+            <polyline class="edge" points="360,400 385,400 385,608" marker-end="url(#arch-arrow)"></polyline>
+            <line class="edge accent-edge" x1="145" y1="540" x2="145" y2="608" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge accent-text" x="153" y="598">edits</text>
+
+            <!-- Browser edges -->
+            <line class="edge" x1="965" y1="230" x2="965" y2="258" marker-end="url(#arch-arrow)"></line>
+            <line class="edge" x1="810" y1="425" x2="742" y2="425" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="776" y="418" text-anchor="middle">/api/*</text>
+            <line class="edge" x1="860" y1="430" x2="860" y2="608" marker-end="url(#arch-arrow)"></line>
+            <text class="t-edge" x="868" y="598">calls</text>
+          </svg>
+          <figcaption>Three places, one algorithm. The droplet collects raw inputs and proxies the app's API calls; the laptop turns samples into outcomes and scores frozen v0 against v1 on identical trips, where the agent may change only v1; the phone runs the same <code>routePlan.ts</code>. The amber box is the one piece still waiting on you: the live app is the old build until you approve the deploy.</figcaption>
+        </figure>
         <ol class="pipeline">
           <li><div><span class="stage-name">Sample</span><p>Cron on the droplet records <code>PlanInputs</code> — everything the algorithm needs, as JSON — from Downtown, Northgate and AI2 to a fixed destination. No plan is computed there; plans are computed at eval time for whichever algorithm version is being scored.</p></div></li>
           <li><div><span class="stage-name">Resolve</span><p>Once a trip would be over (3.5 h after the sample), the resolver reconstructs what really happened from later samples and WSDOT's record of actual departures. No Google calls.</p></div></li>
