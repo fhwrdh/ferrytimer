@@ -1,0 +1,601 @@
+<title>Ferry Timer Design Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --ground: #f4f7f5;
+  --surface: #ffffff;
+  --ink: #15201c;
+  --muted: #56645f;
+  --rule: #d5dfda;
+  --accent: #0b7453;
+  --accent-soft: #e0efe8;
+  --caution: #a86a00;
+  --caution-soft: #fbf0dc;
+  --code-bg: #eaf0ec;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e1513;
+    --surface: #151e1b;
+    --ink: #e2ebe7;
+    --muted: #9aaba5;
+    --rule: #2a3733;
+    --accent: #52c29a;
+    --accent-soft: #173229;
+    --caution: #e3aa45;
+    --caution-soft: #2e2512;
+    --code-bg: #1b2622;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0e1513;
+  --surface: #151e1b;
+  --ink: #e2ebe7;
+  --muted: #9aaba5;
+  --rule: #2a3733;
+  --accent: #52c29a;
+  --accent-soft: #173229;
+  --caution: #e3aa45;
+  --caution-soft: #2e2512;
+  --code-bg: #1b2622;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+  padding-inline: 20px;
+  padding-block: 0 80px;
+}
+.page {
+  max-width: 1120px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 56px;
+}
+@media (max-width: 860px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.index { display: none; }
+}
+
+nav.index {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  padding-block: 40px;
+  font-family: var(--display);
+  font-size: 13px;
+}
+nav.index p {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 12px;
+  font-weight: 600;
+  font-size: 11px;
+}
+nav.index ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+nav.index a { color: var(--ink); text-decoration: none; }
+nav.index a:hover, nav.index a:focus-visible { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+main { min-width: 0; padding-block: 40px; }
+.doc { max-width: 70ch; }
+
+header.masthead { border-bottom: 2px solid var(--ink); padding-bottom: 24px; margin-bottom: 8px; }
+.eyebrow {
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+h1 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(34px, 5vw, 50px);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+.dek { font-size: 20px; color: var(--muted); margin: 0; max-width: 60ch; }
+.meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+section { padding-top: 44px; }
+h2 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 27px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  margin: 26px 0 8px;
+  text-wrap: balance;
+}
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 14px; padding-left: 22px; }
+li { margin-bottom: 6px; }
+strong { font-weight: 600; }
+code {
+  font-family: var(--mono);
+  font-size: 0.84em;
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+
+.pitch {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 22px 24px;
+  margin-top: 28px;
+}
+.pitch p:last-child { margin-bottom: 0; }
+.pitch .eyebrow { margin-bottom: 8px; }
+.pitch p.say { font-size: 19px; line-height: 1.55; }
+
+.caution {
+  background: var(--caution-soft);
+  border-left: 3px solid var(--caution);
+  padding: 14px 18px;
+  margin: 18px 0;
+  border-radius: 0 4px 4px 0;
+}
+.caution .label {
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--caution);
+  display: block;
+  margin-bottom: 4px;
+}
+.caution p:last-child { margin-bottom: 0; }
+
+.diagram {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 18px;
+  margin: 18px 0;
+  overflow-x: auto;
+}
+.diagram pre.mermaid { margin: 0; background: transparent; }
+
+.table-wrap { overflow-x: auto; margin: 16px 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.45; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); }
+th {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1.5px solid var(--ink);
+}
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 12px; }
+
+.pipeline { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 0; counter-reset: stage; }
+.pipeline li {
+  counter-increment: stage;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+  margin: 0;
+}
+.pipeline li:last-child { border-bottom: 1px solid var(--rule); }
+.pipeline li::before {
+  content: counter(stage);
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1.2;
+}
+.pipeline .stage-name { font-family: var(--display); font-weight: 600; display: block; margin-bottom: 2px; }
+.pipeline p { margin: 0; }
+
+details.qa {
+  border-top: 1px solid var(--rule);
+  padding: 12px 0;
+}
+details.qa:last-of-type { border-bottom: 1px solid var(--rule); }
+details.qa summary {
+  cursor: pointer;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+  list-style: none;
+  display: flex;
+  gap: 10px;
+}
+details.qa summary::-webkit-details-marker { display: none; }
+details.qa summary::before { content: "+"; color: var(--accent); font-weight: 800; width: 12px; flex: none; }
+details.qa[open] summary::before { content: "−"; }
+details.qa summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details.qa .answer { padding: 10px 0 2px 22px; }
+details.qa .answer p:last-child { margin-bottom: 0; }
+
+.checklist { list-style: none; padding: 0; }
+.checklist li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+.checklist li::before { content: "☐"; color: var(--accent); font-size: 15px; line-height: 1.6; }
+
+footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted); }
+</style>
+
+<div class="page">
+  <nav class="index" aria-label="Sections">
+    <p>Brief</p>
+    <ul>
+      <li><a href="#pitch">The pitch</a></li>
+      <li><a href="#system">System at a glance</a></li>
+      <li><a href="#v1">Algorithm v1</a></li>
+      <li><a href="#truth">Ground truth</a></li>
+      <li><a href="#eval">Scoring &amp; gates</a></li>
+      <li><a href="#gaming">Keeping the agent honest</a></li>
+      <li><a href="#workflow">How it was built</a></li>
+      <li><a href="#decisions">Decisions</a></li>
+      <li><a href="#limits">Known limits</a></li>
+      <li><a href="#numbers">Numbers</a></li>
+      <li><a href="#next">Where this goes</a></li>
+      <li><a href="#questions">Likely questions</a></li>
+      <li><a href="#tonight">Tonight &amp; demo</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="doc">
+      <header class="masthead">
+        <p class="eyebrow">AI2 Skills interview · 15 Sep 2026</p>
+        <h1>Ferry Timer: an eval harness that lets an agent tune real routing</h1>
+        <p class="dek">The design as it stands after today's iterations: what's built, why each choice was made, and where the edges are.</p>
+        <div class="meta">
+          <span>branch feat/route-plan-sampler</span>
+          <span>head e66fe47</span>
+          <span>107 tests</span>
+          <span>live app not yet redeployed</span>
+        </div>
+      </header>
+
+      <section id="pitch">
+        <div class="pitch">
+          <p class="eyebrow">Say it in 45 seconds</p>
+          <p class="say">"My first instinct was to put an agent inside the app. I took it out of the runtime path: a commute decision has to be fast, free and give the same answer twice. Instead I put the agent in the <em>development</em> loop. A sampler records real traffic and ferry data every 20 minutes; a resolver turns it into what actually happened; an eval scores the routing algorithm against that truth, next to the old algorithm on the exact same trips. A coding agent then proposes changes and the harness decides — and most of the interesting work was making sure the agent can't win by gaming the harness."</p>
+        </div>
+        <p style="margin-top:18px">Ferry Timer answers one question on the way home to the Kitsap Peninsula: take the Bainbridge ferry, the Kingston ferry, or drive around through Tacoma. It uses live Google traffic, WSDOT schedules, sailing space and vessel positions.</p>
+      </section>
+
+      <section id="system">
+        <h2>System at a glance</h2>
+        <p>Three things run in three places. The algorithm is one pure function shared by all of them, so what the eval scores is literally what the app runs.</p>
+        <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  subgraph Droplet["Droplet (cron, every 20 min)"]
+    S["Sampler<br/>3 origins → T&amp;C Poulsbo"]
+  end
+  subgraph Laptop["Laptop (eval)"]
+    F["eval:fetch"] --> R["eval:resolve<br/>+ WSDOT vessel history"]
+    R --> E["eval<br/>v0 vs v1, paired"]
+    E --> A["Tuning agent<br/>edits routePlan.ts"]
+    A --> E
+  end
+  subgraph App["PWA in the browser"]
+    H["Hook: fetch stage 1 + 2"] --> P["planRoutes (v1)"]
+  end
+  S -- samples.jsonl --> F
+  A -. same file .-> P
+</pre>
+        </div>
+        <ol class="pipeline">
+          <li><div><span class="stage-name">Sample</span><p>Cron on the droplet records <code>PlanInputs</code> — everything the algorithm needs, as JSON — from Downtown, Northgate and AI2 to a fixed destination. No plan is computed there; plans are computed at eval time for whichever algorithm version is being scored.</p></div></li>
+          <li><div><span class="stage-name">Resolve</span><p>Once a trip would be over (3.5 h after the sample), the resolver reconstructs what really happened from later samples and WSDOT's record of actual departures. No Google calls.</p></div></li>
+          <li><div><span class="stage-name">Score</span><p>Frozen v0 and current v1 plan every resolved sample; errors count only where both predicted. Handcrafted guardrails run first.</p></div></li>
+          <li><div><span class="stage-name">Tune</span><p>The <code>tune-route-plan</code> skill runs measure → hypothesize → change one thing → re-measure, and keeps a change only if the holdout gates pass.</p></div></li>
+        </ol>
+        <h3>Why record inputs, not predictions</h3>
+        <p>If the sampler stored v1's answer, changing v1 would invalidate every sample. Recording the raw inputs means any future algorithm replays against the same history. To keep replays from going stale, the sampler prices the drive home for <strong>three candidate sailings</strong> per route, a superset of what any algorithm would pick.</p>
+      </section>
+
+      <section id="v1">
+        <h2>Algorithm v1 — what changed from what shipped</h2>
+        <p><code>src/lib/routePlan.ts</code> is pure: inputs, parameters and bias in; a plan out. v0 is kept frozen beside it as the baseline.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rule</th><th>v0 (shipped)</th><th>v1</th></tr></thead>
+            <tbody>
+              <tr><td>Full next boat</td><td>Route shown as unreachable</td><td>Roll forward to the next sailing with space, with a warning</td></tr>
+              <tr><td>Nearly full (&lt;10 spaces)</td><td>Only a red risk label</td><td>Keep the boat for the headline; judge the close call on the <em>fallback</em> sailing</td></tr>
+              <tr><td>Late vessel</td><td>Any ETA for a same-named vessel (and ETA parsing was broken, so never)</td><td>Only when the vessel is heading to <em>this</em> departing terminal</td></tr>
+              <tr><td>Drive home after the boat</td><td>Priced at today's traffic right now</td><td>Priced for the landing time, from the nearest recorded or fetched price</td></tr>
+              <tr><td>Crossing time</td><td>Hardcoded 35/30</td><td>Tunable 35/30 — WSDOT's schedule never includes arrival times</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Close call</strong> fires when the top two routes are within 15 minutes by <em>decision</em> time, or when ranking by decision time would change the winner. Headline stays optimistic ("go for it"); the close call stays honest about the risk.</p>
+        <p><strong>In the app</strong>, the hook now runs two stages: the existing fetches, then Google calls priced at each chosen sailing's landing time (primary plus fallback). If a timed call fails, the plan falls back to the current-traffic leg and says so.</p>
+        <div class="caution">
+          <span class="label">Real bug found on the way</span>
+          <p>WSDOT sends vessel ETAs as <code>/Date(1789407360000-0700)/</code>. The app did <code>new Date(vessel.Eta)</code> — Invalid Date — so the README's real-time delay adjustment had never run in production. Found by reading the actual payload, not the docs.</p>
+        </div>
+      </section>
+
+      <section id="truth">
+        <h2>Ground truth — how "what actually happened" is built</h2>
+        <p>Nobody drove these trips. Truth is <strong>proxy truth</strong>, assembled only from things observed at the time. Google can't price the past (it rejects a past <code>departureTime</code>), so later sampler runs stand in as the traffic record.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Leg</th><th>Observed from</th></tr></thead>
+            <tbody>
+              <tr><td>Drive to terminal</td><td>The sample's own current-traffic reading at <code>now</code></td></tr>
+              <tr><td>Which boat you'd catch</td><td>WSDOT vessel history: first sailing whose <em>actual</em> departure is after arrival + 10 min, skipping one the last pre-arrival space reading showed full</td></tr>
+              <tr><td>Crossing</td><td>WSDOT <code>EstArrival − ActualDepart</code> (an estimate, not a recorded arrival)</td></tr>
+              <tr><td>Drive home</td><td>Current-traffic reading from the sampler run nearest the landing, within 10 min</td></tr>
+              <tr><td>Drive around</td><td>The sample's own reading — identical to the prediction</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Anything missing makes the route <strong>unresolved</strong>, never guessed. The destination is Town &amp; Country Market in Poulsbo: a public place, so the data is shareable and nothing private is on screen.</p>
+      </section>
+
+      <section id="eval">
+        <h2>Scoring and gates</h2>
+        <ul>
+          <li><strong>Paired rows.</strong> v0 and v1 are both run live on every resolved sample. A route's error counts only where the outcome resolved <em>and both</em> predicted — so they're judged on identical trips.</li>
+          <li><strong>Split on run time.</strong> 20% holdout by FNV-1a hash of the sample's <code>now</code>. Samples from different origins in one run share nearly all ferry data; hashing the sample id would leak holdout into tuning.</li>
+          <li><strong>Ferry-only MAE.</strong> Drive-around error is always zero by construction, so it's excluded from gates.</li>
+          <li><strong>Winner agreement</strong> counts only fully resolved samples, and a missing winner counts as wrong.</li>
+          <li><strong>Holdout is totals only.</strong> The agent sees tune-set detail and its worst misses; never holdout sample ids.</li>
+        </ul>
+        <h3>A change is kept only if</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Gate</th><th>Fails when</th></tr></thead>
+            <tbody>
+              <tr><td>Guardrails</td><td>Any of 4 handcrafted scenarios fails (run with frozen parameters)</td></tr>
+              <tr><td>Accuracy</td><td>Holdout v1 ferry MAE worse than v0 by more than 2 min</td></tr>
+              <tr><td>Decision quality</td><td>Holdout v1 winner agreement lower than v0</td></tr>
+              <tr><td>Coverage</td><td>v1 predicts fewer resolved ferry trips than v0</td></tr>
+              <tr><td>Integrity</td><td>Any protected file differs from the <code>eval-base</code> tag, or git can't be checked</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>With too little data a gate prints <code>GATE SKIPPED: insufficient data</code> instead of quietly passing.</p>
+      </section>
+
+      <section id="gaming">
+        <h2>Keeping the agent honest</h2>
+        <p>This is the part to linger on. An agent optimizing against a pass/fail signal will find the cheapest way to pass. Each defense below exists because a reviewer found a concrete way to win without improving the algorithm.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>How it could cheat</th><th>Defense</th></tr></thead>
+            <tbody>
+              <tr><td>Edit the tests or the truth</td><td>Protected files (scenarios, scorer, resolver, v0, fixtures, runner, configs, the skill) checked against a human-set <code>eval-base</code> tag; any diff fails the run</td></tr>
+              <tr><td>Move the tag to its own commit</td><td>Skill and runner state only a human sets the tag</td></tr>
+              <tr><td>Tune parameters until a guardrail's numbers happen to match</td><td>Guardrails run with frozen parameters — they pin rules, not tuned values; a new parameter needs a human</td></tr>
+              <tr><td>Lower MAE by refusing to predict hard trips</td><td>Paired scoring plus the coverage gate</td></tr>
+              <tr><td>Raise winner agreement by naming no winner</td><td>Missing winner counts as wrong</td></tr>
+              <tr><td>Learn from holdout via twin samples</td><td>Split on run time, not sample id</td></tr>
+              <tr><td>Beat a stale baseline</td><td>v0 scored live on the same rows every run; <code>baseline.json</code> is a record only</td></tr>
+              <tr><td>Win by "driving was best" on unresolved nights</td><td>Winner agreement only on fully resolved samples</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="workflow">
+        <h2>How it was built — the AI workflow itself</h2>
+        <p>The build is the second example for a Skills interview: not "AI wrote it" but where AI was trusted, where it was checked, and what the checks caught.</p>
+        <ol class="pipeline">
+          <li><div><span class="stage-name">Brainstorm → spec</span><p>Classified as architectural; trade-offs argued one question at a time; spec committed and revised twice when probes contradicted it.</p></div></li>
+          <li><div><span class="stage-name">Probe before planning</span><p>Real API calls settled facts: Google rejects past times, WSDOT vessel history lags ~30 min, the Routes cap is 1,000/day.</p></div></li>
+          <li><div><span class="stage-name">Plan → one subagent per task</span><p>Cheap models transcribed fully specified code; a separate reviewer model gated every task on spec and quality.</p></div></li>
+          <li><div><span class="stage-name">Ledger of rulings</span><p>Every judgment call written down with its cost if wrong, so decisions survive context loss and stay auditable.</p></div></li>
+          <li><div><span class="stage-name">Final review on the strongest model, then one fix wave</span><p>Whole-branch review found what task reviews couldn't see across files.</p></div></li>
+        </ol>
+        <h3>What the checks caught</h3>
+        <ul>
+          <li>Every WSDOT sailing arrives without an arrival time (124/124) — the sampler had been pricing the drive home 35 minutes early.</li>
+          <li>A non-atomic budget write mandated by the plan itself, which could stop overnight sampling.</li>
+          <li>The holdout leak, the not-predicting loophole, the stale baseline, the "drive wins by default" bias.</li>
+          <li>A subagent signing commits with its own model name instead of the required trailer.</li>
+          <li>The permission system blocked an unapproved production deploy — the human stays in the loop for outward-facing actions.</li>
+        </ul>
+      </section>
+
+      <section id="decisions">
+        <h2>Decisions and what was rejected</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Decision</th><th>Chosen</th><th>Rejected, and why</th></tr></thead>
+            <tbody>
+              <tr><td>Where AI goes</td><td>Development loop</td><td>Agent in the app: slow, costly, nondeterministic for a glance-and-go answer</td></tr>
+              <tr><td>Ground truth</td><td>Sampler + resolver</td><td>Real trips only: ~1 data point by demo day; tuning on it is overfitting</td></tr>
+              <tr><td>Trip capture</td><td>Cut for time</td><td>Endpoint, arrival card, importer — the inputs format already supports it later</td></tr>
+              <tr><td>Quota</td><td>Stay under the shared cap: 650 for the sampler</td><td>Separate GCP project or a quota raise: not ready by tomorrow</td></tr>
+              <tr><td>Origins</td><td>Downtown, Northgate, AI2</td><td>Replacing one: fewer samples, less spread in timing</td></tr>
+              <tr><td>Sampling horizon</td><td>Today only, stops 21:05</td><td>Demo day: keeps the full quota for the demo</td></tr>
+              <tr><td>App deploy</td><td>After browser check and your approval</td><td>Deploy on green tests alone</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="limits">
+        <h2>Known limits — say these before you're asked</h2>
+        <div class="caution">
+          <span class="label">Thin data</span>
+          <p>Roughly 85 samples from one afternoon and evening, about 1 in 5 in holdout. A 1–2 minute MAE change can be noise.</p>
+        </div>
+        <div class="caution">
+          <span class="label">Phase aliasing</span>
+          <p>A fixed 20-minute grid drifts in and out of phase with sailings, so the boarding-cutoff region — where close calls and big misses live — is sparsely sampled. Future experiment: time extra runs to land at each sailing's cutoff.</p>
+        </div>
+        <div class="caution">
+          <span class="label">Truth borrows assumptions</span>
+          <p>The resolver uses a fixed 10-minute boarding buffer and WSDOT's estimated arrivals, so the eval can't tell you the right boarding buffer. Drive-around truth equals its prediction.</p>
+        </div>
+        <div class="caution">
+          <span class="label">Rules, not enforcement</span>
+          <p>"Only a human moves the tag" is an instruction to the agent, not something code prevents. The protected-file check needs the tag set before the session.</p>
+        </div>
+        <div class="caution">
+          <span class="label">App</span>
+          <p>A recalculation now makes up to 9–10 Google calls against a 40/min per-IP limit. The screen's close-call banner still uses headline times, not v1's fallback rule.</p>
+        </div>
+      </section>
+
+      <section id="numbers">
+        <h2>Numbers to have ready</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>What</th><th class="num">Value</th></tr></thead>
+            <tbody>
+              <tr><td>Sampling interval / window</td><td class="num">20 min · 06:00–21:00 PT</td></tr>
+              <tr><td>Origins / Google calls per run</td><td class="num">3 · 17</td></tr>
+              <tr><td>Sampler budget / project cap</td><td class="num">650 · 1,000 per day</td></tr>
+              <tr><td>Candidate sailings priced per route</td><td class="num">3</td></tr>
+              <tr><td>Sample settles after</td><td class="num">210 min</td></tr>
+              <tr><td>Boarding buffer · vessel loading</td><td class="num">10 · 15 min</td></tr>
+              <tr><td>Nearly full · close call</td><td class="num">&lt;10 spaces · 15 min</td></tr>
+              <tr><td>Home-leg match window</td><td class="num">20 min</td></tr>
+              <tr><td>Crossing Bainbridge · Kingston</td><td class="num">35 · 30 min</td></tr>
+              <tr><td>Holdout share · MAE tolerance</td><td class="num">20% · 2 min</td></tr>
+              <tr><td>Tests</td><td class="num">107</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="next">
+        <h2>Where this goes</h2>
+        <div class="pitch">
+          <p class="eyebrow">Say it in 30 seconds</p>
+          <p class="say">"The reusable part isn't the ferry app — it's the loop: record what the system saw, resolve what actually happened, score every change against it, and let an agent propose changes behind gates. Google already forecasts traffic, so the novel data is on the water: WSDOT publishes a live snapshot of boats and car deck space, but no history and no forecast. Keep that history and you can forecast whether you'll actually get on the 5:30 — and because WSDOT's own later readings confirm or refute every forecast, the accuracy is measured, not claimed."</p>
+        </div>
+
+        <h3>The thread through every step</h3>
+        <p>Each horizon reuses the same machinery. What changes is the data source and who benefits — the eval harness is what makes each step trustworthy rather than a guess.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Horizon</th><th>Product</th><th>Harness and workflow</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Next weeks</strong><br>finish the commuter tool</td>
+                <td>Show the fallback sailing and v1's close call on screen; saved home plus easy other destinations; a "too far from the ferries" guard; cache drive-home prices</td>
+                <td>Aim extra sampling runs at each sailing's boarding cutoff; capture real trips as scenarios; enforce the eval base in CI instead of by instruction</td>
+              </tr>
+              <tr>
+                <td><strong>Next months</strong><br>WSDOT memory</td>
+                <td>A free, always-on archive of car deck space and actual departures for the busy routes; per-sailing fill curves and delay patterns by weekday</td>
+                <td>A self-resolving eval: forecast "30 spaces at 5:10", check it against the 5:10 reading. No proxy truth needed</td>
+              </tr>
+              <tr>
+                <td><strong>Longer</strong><br>public forecast</td>
+                <td>Odds of getting on a sailing, open to anyone; a small read API other apps can use</td>
+                <td>Publish the scorecard alongside the forecast; a nightly agent retrains on fresh data and opens a pull request with before/after numbers for a human to merge</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Why WSDOT and not Google</h3>
+        <ul>
+          <li><strong>Google already does it.</strong> Traffic history and future-time forecasts are a product you call. Re-deriving them privately is worse data at real cost.</li>
+          <li><strong>WSDOT doesn't.</strong> One live snapshot of "40 spaces" can't say whether they'll be gone before you arrive. A fill rate can.</li>
+          <li><strong>The economics flip when it's public.</strong> One free poller serves every user; value scales with riders, cost doesn't.</li>
+          <li><strong>History can't be recovered later.</strong> Vessel history can be pulled for past days; past car deck readings are gone. Collection is the one thing worth starting early.</li>
+        </ul>
+
+        <h3>The AI-tooling version of "what's next"</h3>
+        <p>For a Skills interview, the forward-looking answer is also about the workflow:</p>
+        <ul>
+          <li>Move from "an agent tunes when I ask" to <strong>a scheduled agent that proposes changes as pull requests</strong>, each carrying the scorecard, with the eval as a required CI check and a human merging.</li>
+          <li>Treat <strong>anti-gaming as a first-class design problem</strong>: every metric an agent optimizes needs a paired baseline, a coverage check and a truth it can't touch.</li>
+          <li>Keep the pattern that worked today: <strong>independent reviewers as gates</strong>, a written ledger of judgment calls, and humans on anything outward-facing.</li>
+        </ul>
+
+        <div class="caution">
+          <span class="label">Name the risks with the vision</span>
+          <p>WSDOT API terms and attribution for a public service; seasonal schedules, boats out of service and holidays that break patterns; "the app said I'd make it" liability, so show odds not promises; weeks of data before forecasts are useful; and check existing ferry apps before calling it novel.</p>
+        </div>
+      </section>
+
+      <section id="questions">
+        <h2>Likely questions</h2>
+        <details class="qa">
+          <summary>Why not just put an LLM in the app?</summary>
+          <div class="answer"><p>The answer has to be the same twice, instant, and free on a phone at a terminal. The model's value is in exploring changes to the algorithm with an objective verdict — so it lives in the dev loop, where a wrong idea costs a reverted commit, not a missed boat.</p></div>
+        </details>
+        <details class="qa">
+          <summary>How do you know the ground truth is right?</summary>
+          <div class="answer"><p>It isn't "right" — it's proxy truth, labeled as such. Each leg comes from an independent observation made at the time (later traffic readings, WSDOT's actual departures). Where the truth borrows the model's assumptions — boarding buffer, drive-around — the gates exclude or the skill documents it. Missing data is unresolved, never estimated.</p></div>
+        </details>
+        <details class="qa">
+          <summary>What stops the agent from overfitting 85 samples?</summary>
+          <div class="answer"><p>A holdout it only sees totals for, split so twin samples can't leak; guardrails that pin behavior with frozen parameters; one hypothesis per change; and an explicit instruction that 1–2 minute gains may be noise. It's still thin, and I'd say so.</p></div>
+        </details>
+        <details class="qa">
+          <summary>What would you change with more time?</summary>
+          <div class="answer"><p>Target the boarding cutoff with scheduled sampling runs; capture real trips as scenarios; enforce the eval base in CI rather than by instruction; surface the fallback sailing in the UI; and cache home-leg prices to cut Google calls.</p></div>
+        </details>
+        <details class="qa">
+          <summary>Where did AI help most, and where did it hurt?</summary>
+          <div class="answer"><p>Helped: transcribing fully specified tasks fast, and independent reviewers finding cross-file problems (the holdout leak, the missing arrival times). Hurt, or would have: an agent under a pass/fail signal is incentivized to game it, and subagents cut corners like signing commits with their own model name. Both argue for gates and a human on outward-facing steps.</p></div>
+        </details>
+        <details class="qa">
+          <summary>Why a Poulsbo grocery store as "home"?</summary>
+          <div class="answer"><p>A fixed, public destination makes samples replayable and shareable without putting a real home address in the data or on screen. The algorithm doesn't assume home anywhere; destinations are a separate future feature.</p></div>
+        </details>
+      </section>
+
+      <section id="tonight">
+        <h2>Tonight and the demo</h2>
+        <ul class="checklist">
+          <li>On landing: <code>npm run eval:fetch &amp;&amp; npm run eval:resolve &amp;&amp; npm run eval</code> for the first real scorecard.</li>
+          <li>Decide on the app deploy (<code>npm run deploy</code>); rollback is redeploying <code>main</code>.</li>
+          <li>After 21:30: fetch and resolve again, then <code>git tag -f eval-base</code> yourself.</li>
+          <li><code>npm run eval:baseline</code> (a record), then start <code>tune-route-plan</code> in a fresh session.</li>
+          <li>Demo: pin AI2 as the start point; don't tap refresh repeatedly.</li>
+          <li>Sampling stops by itself at 21:05 PT; tomorrow keeps the full Google quota.</li>
+        </ul>
+      </section>
+
+      <footer class="end">Built from the spec, plans and progress ledgers in the <code>ferrytimer-sampler</code> worktree as of 14 Sep 2026, early afternoon PT.</footer>
+    </div>
+  </main>
+</div>
