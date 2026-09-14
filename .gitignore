@@ -28,3 +28,6 @@ npm-debug.log*
 
 # Sampler data (runtime output on the droplet)
 data/
+
+# Eval data pulled from the droplet and resolved locally
+eval/data/

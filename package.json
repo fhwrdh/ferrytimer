@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "deploy": "bash scripts/deploy.sh",
     "test": "vitest run",
-    "build:sampler": "esbuild src/sampler/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/dist/sampler.mjs"
+    "build:sampler": "esbuild src/sampler/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=server/dist/sampler.mjs",
+    "eval": "tsx eval/run.ts",
+    "eval:baseline": "tsx eval/run.ts --baseline",
+    "eval:fetch": "tsx eval/fetchSamples.ts",
+    "eval:resolve": "tsx --env-file=.env.local eval/resolve.ts"
   },
   "dependencies": {
     "react": "^18.2.0",
