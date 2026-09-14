@@ -67,6 +67,7 @@ describe('runSample', () => {
     expect(result.records.map(r => r.sampleId)).toEqual([
       `downtown-${NOW.toISOString()}`,
       `northgate-${NOW.toISOString()}`,
+      `ai2-${NOW.toISOString()}`,
     ])
     const [downtown, northgate] = result.records
     expect(downtown.schemaVersion).toBe(SAMPLE_SCHEMA_VERSION)
@@ -131,10 +132,10 @@ describe('runSample', () => {
   it('counts every Routes call it makes and spends it from the budget', async () => {
     const b = budget()
     const result = await runSample({ upstream: fakeUpstream(), home: HOME, now: NOW, budget: b })
-    // 2 origins x 3 + 2 terminal-home + 6 timed
-    expect(result.routesCalls).toBe(14)
-    expect(b.used).toBe(14)
-    expect(maxRoutesCalls(ORIGINS.length)).toBe(14)
+    // 3 origins x 3 + 2 terminal-home + 6 timed
+    expect(result.routesCalls).toBe(17)
+    expect(b.used).toBe(17)
+    expect(maxRoutesCalls(ORIGINS.length)).toBe(17)
   })
 
   it('skips without calling anything when the budget cannot cover a full run', async () => {
@@ -155,7 +156,7 @@ describe('runSample', () => {
     const bainbridge = result.records[0].inputs.ferries.BAINBRIDGE
     expect(bainbridge.schedule).toBeNull()
     expect(bainbridge.homeLegs).toEqual([{ departAt: null, minutes: 35 }])
-    expect(result.routesCalls).toBe(9) // 6 + 2 + 1 Kingston candidate
+    expect(result.routesCalls).toBe(12) // 9 + 2 + 1 Kingston candidate
   })
 
   it('degrades failed drives and refinements instead of dropping the record', async () => {

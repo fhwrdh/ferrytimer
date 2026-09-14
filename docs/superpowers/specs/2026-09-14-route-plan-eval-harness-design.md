@@ -126,7 +126,7 @@ Verified 2026-09-14:
 - Routes daily cap is 1,000 calls for the whole GCP project, shared with the app.
 
 **Sampler (live).** Cron every 20 min, sampler exits outside 06:00–21:00
-Pacific. Two origins (Downtown, Northgate) to Town & Country Market, Poulsbo.
+Pacific. Three origins (Downtown, Northgate, AI2) to Town & Country Market, Poulsbo.
 Each run appends one line per origin to `samples.jsonl`:
 `{ sampleId, schemaVersion, origin, destination, now, inputs }`.
 - Live legs: origin→Colman, origin→Edmonds, origin→destination avoiding ferries;
@@ -135,7 +135,8 @@ Each run appends one line per origin to `samples.jsonl`:
   locations with terminal context.
 - Timed home legs for 3 candidate sailings per route, priced at departure +
   crossing time.
-- Budget 650 Routes calls per Pacific day; about 42 per hour.
+- Budget 650 Routes calls per Pacific day; about 17 Routes calls per run
+  (3 origins), about 51 per hour.
 
 Records without `schemaVersion` (4 lines, before 18:34 UTC) priced timed legs
 at departure time; the eval excludes them.

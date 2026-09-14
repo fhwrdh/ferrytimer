@@ -14,6 +14,7 @@ export interface Origin {
 export const ORIGINS: Origin[] = [
   { id: 'downtown', label: 'Downtown (Westlake)', location: { lat: 47.6114, lng: -122.3374 } },
   { id: 'northgate', label: 'Northgate', location: { lat: 47.7063, lng: -122.3255 } },
+  { id: 'ai2', label: 'AI2 (Fremont/Wallingford)', location: { lat: 47.6481168, lng: -122.3318897 } },
 ]
 
 export const CANDIDATES_PER_ROUTE = 3
