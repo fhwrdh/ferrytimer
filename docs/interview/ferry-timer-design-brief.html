@@ -266,6 +266,9 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 14px; f
 }
 .pipeline .stage-name { font-family: var(--display); font-weight: 600; display: block; margin-bottom: 2px; }
 .pipeline p { margin: 0; }
+.beats li { padding: 12px 0; }
+.beats li::before { font-size: 18px; }
+.beats .say { font-size: 18px; }
 
 details.qa {
   border-top: 1px solid var(--rule);
@@ -300,6 +303,7 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
     <p>Brief</p>
     <ul>
       <li><a href="#pitch">The pitch</a></li>
+      <li><a href="#now-next">Now and next</a></li>
       <li><a href="#system">System at a glance</a></li>
       <li><a href="#v1">Algorithm v1</a></li>
       <li><a href="#truth">Ground truth</a></li>
@@ -319,27 +323,73 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
     <div class="doc">
       <header class="masthead">
         <p class="eyebrow">AI2 Skills interview · 15 Sep 2026</p>
-        <h1>Ferry Timer: an eval harness that lets an agent tune real routing</h1>
-        <p class="dek">The design as it stands after today's iterations: what's built, why each choice was made, and where the edges are.</p>
+        <h1>Ferry Timer: what I have now, and where the model belongs next</h1>
+        <p class="dek">V1 is arithmetic. What's built now is a backtest harness that lets an agent change the routing safely. Next comes predicting whether you'll get on the boat, and only after that, a model making the judgment call.</p>
         <div class="meta">
           <span>branch feat/route-plan-sampler</span>
-          <span>head e66fe47</span>
           <span>107 tests</span>
+          <span>first real scorecard: 33 resolved trips</span>
           <span>live app not yet redeployed</span>
         </div>
       </header>
 
       <section id="pitch">
         <div class="pitch">
-          <p class="eyebrow">Say it in 45 seconds</p>
-          <p class="say">"My first instinct was to put an agent inside the app. I took it out of the runtime path: a commute decision has to be fast, free and give the same answer twice. Instead I put the agent in the <em>development</em> loop. A sampler records real traffic and ferry data every 20 minutes; a resolver turns it into what actually happened; an eval scores the routing algorithm against that truth, next to the old algorithm on the exact same trips. A coding agent then proposes changes and the harness decides — and most of the interesting work was making sure the agent can't win by gaming the harness."</p>
+          <p class="eyebrow">The 90-second version · stands alone for people who never saw V1</p>
+          <ol class="pipeline beats">
+            <li><div><p class="say">"I built an app that tells me whether to take the ferry or drive around. V1 is pure arithmetic: Google traffic, WSDOT schedules, add it up."</p></div></li>
+            <li><div><p class="say">"It can't answer the question I actually have: will there be room on the boat when I get there? WSDOT publishes the current state for free, but no history and no forecast. So I started recording it."</p></div></li>
+            <li><div><p class="say">"Before changing the algorithm, I built a backtest harness with an agent in the loop. The agent proposes changes, the harness scores them against what really happened, and most of the work was stopping the agent from gaming the score."</p></div></li>
+            <li><div><p class="say">"Predictions get graded by reality for free: the boat had room or it didn't. The recommendation on top of that uncertainty is the part that needs a real eval, because there's no label and you never see the route you didn't take."</p></div></li>
+          </ol>
         </div>
-        <p style="margin-top:18px">Ferry Timer answers one question on the way home to the Kitsap Peninsula: take the Bainbridge ferry, the Kingston ferry, or drive around through Tacoma. It uses live Google traffic, WSDOT schedules, sailing space and vessel positions.</p>
+        <p style="margin-top:18px">Ferry Timer answers one question on the way home to the Kitsap Peninsula: take the Bainbridge ferry, the Kingston ferry, or drive around through Tacoma. It uses live Google traffic, WSDOT schedules, car deck space and vessel positions.</p>
+
+        <h3>Words to use precisely</h3>
+        <p>In AI circles these words have specific meanings, and using them exactly is itself a signal. The accurate one-liner for today's work: <strong>"It's a backtest with proxy ground truth, used as the gate for an agent's code changes."</strong></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Term</th><th>Means</th><th>Here</th></tr></thead>
+            <tbody>
+              <tr><td>Backtest / offline evaluation</td><td>Score predictions against outcomes that arrive on their own</td><td>What the harness does today</td></tr>
+              <tr><td>Harness</td><td>Code that loads the cases, runs the system, captures results and scores them</td><td><code>eval/run.ts</code> plus the resolver</td></tr>
+              <tr><td>Eval (AI sense)</td><td>Grading open-ended output with a rubric, a judge model or human review</td><td>Only the future judgment layer</td></tr>
+              <tr><td>Proxy ground truth</td><td>A label assembled from other observations rather than observed directly</td><td>Today's trip outcomes; car deck truth will be direct</td></tr>
+              <tr><td>Calibration · Brier score</td><td>Does "70%" happen 70% of the time · mean squared error of probabilities</td><td>How the prediction layer will be scored</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="now-next">
+        <h2>Now and next: three layers</h2>
+        <p>Each layer answers a harder question, is measured differently, and has a different place for AI. This table is the spine of the conversation.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Layer</th><th>Question</th><th>Measured by</th><th>Where AI fits</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Arithmetic</strong></td><td>Which way is fastest if everything runs as scheduled?</td><td>Deterministic; nothing to grade</td><td>Not at runtime. An agent built it and now tunes it behind gates</td><td><strong>Now.</strong> V1 shipped; v1 algorithm and harness built today</td></tr>
+              <tr><td><strong>Prediction</strong></td><td>Will there be room on the 5:30, and how late is it running?</td><td>Backtest: WSDOT's own later readings grade it. Accuracy, calibration, Brier score</td><td>A statistical model on recorded history, not an LLM</td><td><strong>Next.</strong> Start the WSDOT archive</td></tr>
+              <tr><td><strong>Judgment</strong></td><td>Given 70% odds, a 2 PM meeting and a dislike of the Tacoma drive, go for the boat?</td><td>A real eval: rubric or human grading. The route not taken is never observed</td><td>An LLM turning stated context into a recommendation with visible reasoning, replacing V1's bias slider</td><td><strong>Later</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pitch">
+          <p class="say"><strong>Measurement is free for the prediction and expensive for the judgment.</strong> The agent helps build and tune the first two layers; a model belongs at runtime only in the third.</p>
+        </div>
+
+        <h3>What exists today</h3>
+        <ul>
+          <li>A sampler on a droplet recording real inputs every 20 minutes from Downtown, Northgate and AI2.</li>
+          <li>A v1 algorithm that rolls past full boats, keeps a fallback when a boat is nearly full, ignores delays for the wrong terminal and prices the drive home for when the boat lands.</li>
+          <li>A backtest harness scoring frozen v0 against v1 on the same trips, with gates and defenses against an agent gaming them.</li>
+          <li><strong>First real scorecard, 33 resolved trips</strong> (21 tune, 12 holdout): on unseen trips v1 picked the route that actually won 8 of 12 times, v0 5 of 12. Timing error is about the same (13.0 vs 12.9 min). Both predict Kingston about 10 minutes late, which is the first thing to tune. Twelve trips is a signal, not proof.</li>
+        </ul>
       </section>
 
       <section id="system">
         <h2>System at a glance</h2>
-        <p>Three things run in three places. The algorithm is one pure function shared by all of them, so what the eval scores is literally what the app runs.</p>
+        <p>Three things run in three places. The algorithm is one pure function shared by all of them, so what the backtest scores is literally what the app runs.</p>
         <figure class="diagram arch">
           <svg viewBox="0 0 1160 700" role="img" aria-label="Architecture: the droplet sampler records Google and WSDOT data to samples.jsonl; the laptop copies it, resolves outcomes from WSDOT vessel history, and scores frozen v0 against v1 while a tuning agent edits routePlan.ts; the browser app calls the droplet's API proxy and runs the same routePlan.ts. The live app is still the old build.">
             <defs>
@@ -516,6 +566,7 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
 
       <section id="eval">
         <h2>Scoring and gates</h2>
+        <p>Commands are named <code>eval</code>, but strictly this is a backtest: every trip's outcome was observed, not judged.</p>
         <ul>
           <li><strong>Paired rows.</strong> v0 and v1 are both run live on every resolved sample. A route's error counts only where the outcome resolved <em>and both</em> predicted — so they're judged on identical trips.</li>
           <li><strong>Split on run time.</strong> 20% holdout by FNV-1a hash of the sample's <code>now</code>. Samples from different origins in one run share nearly all ferry data; hashing the sample id would leak holdout into tuning.</li>
@@ -616,6 +667,10 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
           <p>"Only a human moves the tag" is an instruction to the agent, not something code prevents. The protected-file check needs the tag set before the session.</p>
         </div>
         <div class="caution">
+          <span class="label">The route not taken</span>
+          <p>You can log when you actually got home, but never how the other route would have gone that day. And "right" isn't only fastest. That's why the judgment layer needs a real eval rather than a score.</p>
+        </div>
+        <div class="caution">
           <span class="label">App</span>
           <p>A recalculation now makes up to 9–10 Google calls against a 40/min per-IP limit. The screen's close-call banner still uses headline times, not v1's fallback rule.</p>
         </div>
@@ -647,30 +702,31 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
         <h2>Where this goes</h2>
         <div class="pitch">
           <p class="eyebrow">Say it in 30 seconds</p>
-          <p class="say">"The reusable part isn't the ferry app — it's the loop: record what the system saw, resolve what actually happened, score every change against it, and let an agent propose changes behind gates. Google already forecasts traffic, so the novel data is on the water: WSDOT publishes a live snapshot of boats and car deck space, but no history and no forecast. Keep that history and you can forecast whether you'll actually get on the 5:30 — and because WSDOT's own later readings confirm or refute every forecast, the accuracy is measured, not claimed."</p>
+          <p class="say">"The reusable part is the loop: record what the system saw, resolve what actually happened, score every change against it, and let an agent propose changes behind gates. Google already forecasts traffic, so the new data is on the water: WSDOT publishes a live snapshot but keeps no history. Keep the history and you can predict whether you'll get on the 5:30, graded by WSDOT's own later readings. Only after that does a model earn a place in the app, making the judgment call, and that's the part that needs a real eval."</p>
         </div>
 
-        <h3>The thread through every step</h3>
-        <p>Each horizon reuses the same machinery. What changes is the data source and who benefits — the eval harness is what makes each step trustworthy rather than a guess.</p>
-
+        <h3>The same loop, one layer at a time</h3>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Horizon</th><th>Product</th><th>Harness and workflow</th></tr></thead>
+            <thead><tr><th>Horizon</th><th>Layer</th><th>Build</th><th>How it's checked</th></tr></thead>
             <tbody>
               <tr>
-                <td><strong>Next weeks</strong><br>finish the commuter tool</td>
-                <td>Show the fallback sailing and v1's close call on screen; saved home plus easy other destinations; a "too far from the ferries" guard; cache drive-home prices</td>
-                <td>Aim extra sampling runs at each sailing's boarding cutoff; capture real trips as scenarios; enforce the eval base in CI instead of by instruction</td>
+                <td><strong>Weeks</strong></td>
+                <td>Arithmetic, finished</td>
+                <td>Show the fallback sailing on screen; saved home plus easy other destinations; a "too far from the ferries" guard; tune the Kingston bias</td>
+                <td>Backtest gates; sampling runs timed to boarding cutoffs; real trips as cases; the eval base enforced in CI</td>
               </tr>
               <tr>
-                <td><strong>Next months</strong><br>WSDOT memory</td>
-                <td>A free, always-on archive of car deck space and actual departures for the busy routes; per-sailing fill curves and delay patterns by weekday</td>
-                <td>A self-resolving eval: forecast "30 spaces at 5:10", check it against the 5:10 reading. No proxy truth needed</td>
+                <td><strong>Months</strong></td>
+                <td>Prediction</td>
+                <td>Always-on WSDOT archive of car deck space and actual departures; fill curves and delay patterns by sailing and weekday; odds of getting on</td>
+                <td>Direct truth: "30 spaces at 5:10" is checked against the 5:10 reading. Calibration and Brier score, no proxy</td>
               </tr>
               <tr>
-                <td><strong>Longer</strong><br>public forecast</td>
-                <td>Odds of getting on a sailing, open to anyone; a small read API other apps can use</td>
-                <td>Publish the scorecard alongside the forecast; a nightly agent retrains on fresh data and opens a pull request with before/after numbers for a human to merge</td>
+                <td><strong>Longer</strong></td>
+                <td>Judgment</td>
+                <td>A model recommends from the odds and your stated context, reasoning visible; perhaps a public forecast with a read API</td>
+                <td>A real eval: rubric and human grading of recommendations; log actual arrivals; accept that the route not taken stays unknown</td>
               </tr>
             </tbody>
           </table>
@@ -678,31 +734,42 @@ footer.end { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--ru
 
         <h3>Why WSDOT and not Google</h3>
         <ul>
-          <li><strong>Google already does it.</strong> Traffic history and future-time forecasts are a product you call. Re-deriving them privately is worse data at real cost.</li>
-          <li><strong>WSDOT doesn't.</strong> One live snapshot of "40 spaces" can't say whether they'll be gone before you arrive. A fill rate can.</li>
-          <li><strong>The economics flip when it's public.</strong> One free poller serves every user; value scales with riders, cost doesn't.</li>
-          <li><strong>History can't be recovered later.</strong> Vessel history can be pulled for past days; past car deck readings are gone. Collection is the one thing worth starting early.</li>
+          <li><strong>Google already does traffic.</strong> History and future-time forecasts are a product you call. Re-deriving them privately is worse data at real cost.</li>
+          <li><strong>Google doesn't do the water.</strong> It routes on published ferry schedules and road traffic, not live vessel state or terminal lines. One snapshot of "40 spaces" can't say whether they'll be gone before you arrive; a fill rate can.</li>
+          <li><strong>The economics flip if it's public.</strong> One free poller serves every user; value scales with riders, cost doesn't.</li>
+          <li><strong>History can't be recovered later.</strong> Past vessel departures can be pulled; past car deck readings are gone. Collection is the one thing worth starting early.</li>
         </ul>
 
         <h3>The AI-tooling version of "what's next"</h3>
-        <p>For a Skills interview, the forward-looking answer is also about the workflow:</p>
         <ul>
-          <li>Move from "an agent tunes when I ask" to <strong>a scheduled agent that proposes changes as pull requests</strong>, each carrying the scorecard, with the eval as a required CI check and a human merging.</li>
-          <li>Treat <strong>anti-gaming as a first-class design problem</strong>: every metric an agent optimizes needs a paired baseline, a coverage check and a truth it can't touch.</li>
-          <li>Keep the pattern that worked today: <strong>independent reviewers as gates</strong>, a written ledger of judgment calls, and humans on anything outward-facing.</li>
+          <li>Move from "an agent tunes when I ask" to <strong>a scheduled agent that proposes changes as pull requests</strong>, each carrying the scorecard, with the backtest as a required check and a human merging.</li>
+          <li>Treat <strong>anti-gaming as a design problem in its own right</strong>: every metric an agent optimizes needs a paired baseline, a coverage check and a truth it can't touch.</li>
+          <li>Keep what worked today: <strong>independent reviewers as gates</strong>, a written ledger of judgment calls, and humans on anything outward-facing.</li>
         </ul>
 
         <div class="caution">
           <span class="label">Name the risks with the vision</span>
-          <p>WSDOT API terms and attribution for a public service; seasonal schedules, boats out of service and holidays that break patterns; "the app said I'd make it" liability, so show odds not promises; weeks of data before forecasts are useful; and check existing ferry apps before calling it novel.</p>
+          <p>WSDOT API terms and attribution for a public service; seasonal schedules, boats out of service and holidays that break patterns; "the app said I'd make it" liability, so show odds not promises; weeks of data before forecasts are useful; and check existing ferry apps before calling it new.</p>
         </div>
       </section>
 
       <section id="questions">
         <h2>Likely questions</h2>
         <details class="qa">
+          <summary>Doesn't Google already do that?</summary>
+          <div class="answer"><p>Google routes on published schedules and road traffic, assuming you make the boat. It doesn't use live vessel state or terminal lines, so it will happily send you to a dock where the line is two boats deep. The question isn't "which route"; it's "will I get on, and should I go now."</p></div>
+        </details>
+        <details class="qa">
+          <summary>Is this really an eval?</summary>
+          <div class="answer"><p>Strictly, what's built is a backtest with proxy ground truth, used as the gate for an agent's code changes. Predictions like "room on the boat" are graded by reality. The eval in the AI sense is the recommendation layer, where there's no label and a rubric or a human has to judge.</p></div>
+        </details>
+        <details class="qa">
+          <summary>So where does AI belong at runtime?</summary>
+          <div class="answer"><p>Not in the arithmetic, which must give the same answer twice, and not necessarily in the prediction, which is a statistics problem with free labels. It belongs in the judgment: turning "I have a meeting at 2 and hate the Tacoma drive" plus the odds into a recommendation with visible reasoning. That replaces V1's hand-tuned bias slider.</p></div>
+        </details>
+        <details class="qa">
           <summary>Why not just put an LLM in the app?</summary>
-          <div class="answer"><p>The answer has to be the same twice, instant, and free on a phone at a terminal. The model's value is in exploring changes to the algorithm with an objective verdict — so it lives in the dev loop, where a wrong idea costs a reverted commit, not a missed boat.</p></div>
+          <div class="answer"><p>Not in the parts that have right answers. The arithmetic must be the same twice, instant and free; the boat prediction is statistics graded by reality. The model&#39;s value today is in the dev loop, where a wrong idea costs a reverted commit, not a missed boat. At runtime it earns a place later, in the judgment call.</p></div>
         </details>
         <details class="qa">
           <summary>How do you know the ground truth is right?</summary>
