@@ -17,7 +17,7 @@ echo "==> syncing dist/"
 rsync -az --delete dist/ "$HOST:$REMOTE/dist/"
 
 echo "==> syncing server code"
-rsync -az server/server.mjs server/ecosystem.config.cjs server/run-sampler.sh "$HOST:$REMOTE/server/"
+rsync -az server/server.mjs server/ecosystem.config.cjs server/run-sampler.sh server/wsdot-archive.sh "$HOST:$REMOTE/server/"
 rsync -az --delete server/dist/ "$HOST:$REMOTE/server/dist/"
 
 echo "==> reloading pm2"
